@@ -28,6 +28,15 @@ const parseDuration = (durationStr: string): number => {
   return 0;
 };
 
+// Função auxiliar para formatar data no padrão brasileiro
+const formatDateToBrazilian = (date: string): string => {
+  const jsDate = new Date(date);
+  const day = jsDate.getDate().toString().padStart(2, "0");
+  const month = (jsDate.getMonth() + 1).toString().padStart(2, "0");
+  const year = jsDate.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 // Interface para itens de procedimento da API
 interface ProcedureItem {
   Id: number;
@@ -295,8 +304,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     });
 
     const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
+    const structureId = (req.headers["x-organization-structure"] as string) || "58";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -314,20 +322,10 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
 
-    // Converter a data para o formato esperado pela API
-    // A API do scheduler já está sendo usada para obter os agendamentos
-    // Vamos buscar os agendamentos do dia e extrair os procedimentos
+    // Formatar a data para o padrão brasileiro
+    const formattedDate = formatDateToBrazilian(date);
 
-    // Formatar a data no padrão "MM/DD/YYYY"
-    const jsDate = new Date(date);
-    const formattedDate = `${(jsDate.getMonth() + 1)
-      .toString()
-      .padStart(2, "0")}/${jsDate
-      .getDate()
-      .toString()
-      .padStart(2, "0")}/${jsDate.getFullYear()}`;
-
-    // Criar a data de início e fim (um dia completo)
+    // Criar as datas de início e fim do dia
     const startDate = `${formattedDate} 00:00:00`;
     const endDate = `${formattedDate} 23:59:59`;
 
@@ -349,7 +347,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
 
     console.log("Enviando requisição de procedimentos diários:", {
       url: `${ELOS_URL}/Scheduler/Read`,
-      dados: { startDate, endDate },
+      dados: { startDate, endDate, structureId },
     });
 
     const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {

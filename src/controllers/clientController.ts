@@ -274,7 +274,17 @@ export const listFilteredClients = async (req: Request, res: Response) => {
 // Função para buscar aniversariantes do dia
 export const getBirthdaysByDate = async (req: Request, res: Response) => {
   try {
+    console.log("[getBirthdaysByDate] Recebendo requisição:", {
+      method: req.method,
+      path: req.path,
+      body: req.body,
+      headers: req.headers.authorization
+        ? "Com Authorization"
+        : "Sem Authorization",
+    });
+
     const authToken = req.headers.authorization?.split(" ")[1];
+    const structureId = (req.headers["x-organization-structure"] as string) || "58";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -282,30 +292,19 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
     }
 
     // Obter parâmetros do corpo da requisição
-    const { date, organizationId } = req.body;
+    const { date } = req.body;
 
     // Validar parâmetros obrigatórios
     if (!date) {
       res.status(400).json({
         error: "Data não fornecida",
-        required: ["date", "organizationId"],
-      });
-      return;
-    }
-
-    if (!organizationId) {
-      res.status(400).json({
-        error: "ID da organização não fornecido",
-        required: ["date", "organizationId"],
+        required: ["date"],
       });
       return;
     }
 
     // Formatar a data para o formato brasileiro (DD/MM/YYYY)
-    // Como a API está retornando um dia antes, vamos adicionar um dia à data recebida
     const parsedDate = new Date(date);
-    parsedDate.setDate(parsedDate.getDate() + 1); // Adicionando um dia para compensar o problema
-
     const day = parsedDate.getDate().toString().padStart(2, "0");
     const month = (parsedDate.getMonth() + 1).toString().padStart(2, "0");
     const year = parsedDate.getFullYear();
@@ -316,7 +315,7 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
       `tz=America%2FMaceio`,
       `slot-routing-url=-`,
       `sidebar_closed=0`,
-      `current-organizational-structure=${organizationId}`,
+      `current-organizational-structure=${structureId}`,
       `_ga=GA1.1.1853101631.1733855667`,
       `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
       `Authentication=${authToken}`,
@@ -325,7 +324,7 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
     console.log("Enviando requisição de aniversariantes do dia:", {
       url: `${ELOS_URL}/Report/Custom/List`,
       date: formattedDate,
-      organizationId,
+      structureId,
     });
 
     // Criar os dados do formulário para a requisição
@@ -402,7 +401,7 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
       res.json({
         success: true,
         date: formattedDate,
-        organizationId,
+        structureId,
         total: aniversariantes.length,
         aniversariantes,
       });
