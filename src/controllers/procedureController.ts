@@ -30,11 +30,16 @@ const parseDuration = (durationStr: string): number => {
 
 // Função auxiliar para formatar data no padrão brasileiro
 const formatDateToBrazilian = (date: string): string => {
-  const jsDate = new Date(date);
-  const day = jsDate.getDate().toString().padStart(2, "0");
-  const month = (jsDate.getMonth() + 1).toString().padStart(2, "0");
-  const year = jsDate.getFullYear();
+  const [year, month, day] = date.split('-');
   return `${day}/${month}/${year}`;
+};
+
+// Função auxiliar para converter o formato de data do Elos
+const formatElosDate = (elosDate: string): string => {
+  if (!elosDate) return '';
+  const timestamp = parseInt(elosDate.replace('/Date(', '').replace(')/', ''));
+  const date = new Date(timestamp);
+  return date.toISOString();
 };
 
 // Interface para itens de procedimento da API
@@ -58,13 +63,17 @@ interface AvailableProcedureItem {
 
 // Interface para agendamentos da API
 interface ScheduleItem {
+  Id: number;
+  Client_Id: number;
+  Client_Name: string;
+  Client_FlattenedPhones: string;
   Item_Id: number;
   Item_Name: string;
-  Client_Name: string;
   Start: string;
   End: string;
   Status: number;
   StatusDescription: string;
+  Locality_Id: number;
   Locality_Name: string;
 }
 
@@ -377,14 +386,18 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     // A resposta será a lista de agendamentos, vamos extrair os procedimentos
     const procedures = response.data.Data
       ? response.data.Data.map((item: ScheduleItem) => ({
-          id: item.Item_Id,
-          name: item.Item_Name,
+          id: item.Id,
+          clientId: item.Client_Id,
           client: item.Client_Name,
-          startTime: item.Start,
-          endTime: item.End,
-          status: item.Status,
-          statusDescription: item.StatusDescription,
+          clientPhone: item.Client_FlattenedPhones,
+          procedureId: item.Item_Id,
+          procedure: item.Item_Name,
+          localityId: item.Locality_Id,
           locality: item.Locality_Name,
+          startTime: formatElosDate(item.Start),
+          endTime: formatElosDate(item.End),
+          status: item.Status,
+          statusDescription: item.StatusDescription
         }))
       : [];
 
