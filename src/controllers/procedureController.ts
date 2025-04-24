@@ -30,8 +30,36 @@ const parseDuration = (durationStr: string): number => {
 
 // Função auxiliar para formatar data no padrão brasileiro
 const formatDateToBrazilian = (date: string): string => {
-  const [year, month, day] = date.split('-');
-  return `${day}/${month}/${year}`;
+  try {
+    // Verifica se a data está no formato YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [year, month, day] = date.split('-');
+      return `${day}/${month}/${year}`;
+    }
+    
+    // Se não estiver no formato esperado, tenta criar um objeto Date válido
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      throw new Error('Data inválida');
+    }
+    
+    // Formata para DD/MM/YYYY
+    const day = dateObj.getDate().toString().padStart(2, '0');
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const year = dateObj.getFullYear();
+    
+    console.log(`[formatDateToBrazilian] Convertendo data: ${date} para ${day}/${month}/${year}`);
+    return `${day}/${month}/${year}`;
+  } catch (error) {
+    console.error(`[formatDateToBrazilian] Erro ao converter data ${date}:`, error);
+    // Em caso de erro, retorna a data atual
+    const now = new Date();
+    const day = now.getDate().toString().padStart(2, '0');
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const year = now.getFullYear();
+    console.log(`[formatDateToBrazilian] Usando data atual: ${day}/${month}/${year}`);
+    return `${day}/${month}/${year}`;
+  }
 };
 
 // Função auxiliar para converter o formato de data do Elos
@@ -323,6 +351,8 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     // Obter parâmetros do corpo da requisição
     const { date } = req.body;
 
+    console.log(`[getDailyProcedures] Data recebida: ${date}`);
+
     if (!date) {
       res.status(400).json({
         error: "Data não fornecida",
@@ -331,12 +361,26 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
 
-    // Formatar a data para o padrão brasileiro
-    const formattedDate = formatDateToBrazilian(date);
+    // Criar um objeto Date a partir da data recebida
+    const dateObj = new Date(date);
+    if (isNaN(dateObj.getTime())) {
+      res.status(400).json({
+        error: "Data inválida",
+        required: ["date no formato YYYY-MM-DD"],
+      });
+      return;
+    }
 
-    // Criar as datas de início e fim do dia
-    const startDate = `${formattedDate} 00:00:00`;
-    const endDate = `${formattedDate} 23:59:59`;
+    // Definir o início e fim do dia no formato ISO 8601
+    const year = dateObj.getFullYear();
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const day = dateObj.getDate().toString().padStart(2, '0');
+    
+    // Criar as datas de início e fim do dia no formato ISO que o Elos espera
+    const startDate = `${year}-${month}-${day}T00:00:00.000Z`;
+    const endDate = `${year}-${month}-${day}T23:59:59.999Z`;
+    
+    console.log(`[getDailyProcedures] Intervalo de data para o Elos: de ${startDate} até ${endDate}`);
 
     // Criar a string de cookies
     const cookies = createCookieString(authToken, structureId);
