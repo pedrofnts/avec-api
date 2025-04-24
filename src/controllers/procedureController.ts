@@ -420,7 +420,42 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
         "x-requested-with": "XMLHttpRequest",
         cookie: cookies,
       },
+      validateStatus: function (status) {
+        return status >= 200 && status < 500; // Aceita códigos 2xx, 3xx e 4xx para processar erros manualmente
+      },
     });
+
+    // Verificar se houve erro de autenticação
+    if (response.status === 401 || response.status === 403) {
+      console.error("Erro de autenticação na API Elos:", {
+        status: response.status,
+        data: response.data
+      });
+      res.status(401).json({ error: "Token inválido ou expirado" });
+      return;
+    }
+
+    // Verificar se a resposta é um HTML (provavelmente página de login)
+    if (typeof response.data === 'string' && 
+        (response.data.includes('<html') || 
+         response.data.includes('<!DOCTYPE html'))) {
+      console.error("Recebida página HTML em vez de JSON - possível erro de autenticação:", {
+        status: response.status,
+        data: response.data.substring(0, 200) + '...' // Exibir apenas os primeiros 200 caracteres
+      });
+      res.status(401).json({ error: "Token inválido ou expirado" });
+      return;
+    }
+
+    // Verificar se a resposta contém dados válidos em formato JSON
+    if (!response.data || typeof response.data !== 'object' || !response.data.Data) {
+      console.error("Resposta inválida da API Elos:", {
+        status: response.status,
+        data: response.data
+      });
+      res.status(500).json({ error: "Erro ao processar resposta da API" });
+      return;
+    }
 
     // Extrair os procedimentos da resposta
     const procedures = response.data.Data
@@ -458,6 +493,15 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
         data: error.response?.data,
         headers: error.response?.headers,
       });
+      
+      // Verificar se é um erro de autenticação
+      if (error.response?.status === 401 || error.response?.status === 403 ||
+          (error.response?.data && typeof error.response.data === 'string' && 
+           (error.response.data.includes('<html') || 
+            error.response.data.includes('<!DOCTYPE html')))) {
+        res.status(401).json({ error: "Token inválido ou expirado" });
+        return;
+      }
     }
     res.status(500).json({ error: "Erro ao buscar procedimentos diários" });
   }
