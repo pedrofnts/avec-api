@@ -361,35 +361,31 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
 
-    // Criar um objeto Date a partir da data recebida
-    const dateObj = new Date(date);
-    if (isNaN(dateObj.getTime())) {
+    // Validar formato da data (YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       res.status(400).json({
         error: "Data inválida",
         required: ["date no formato YYYY-MM-DD"],
       });
       return;
     }
-
-    // Definir o início e fim do dia no formato ISO 8601
-    const year = dateObj.getFullYear();
-    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-    const day = dateObj.getDate().toString().padStart(2, '0');
     
-    // Criar as datas de início e fim do dia no formato ISO que o Elos espera
-    const startDate = `${year}-${month}-${day}T00:00:00.000Z`;
-    const endDate = `${year}-${month}-${day}T23:59:59.999Z`;
+    // Formato exato igual ao cURL bem-sucedido
+    const startDate = `${date}T03:00:00.000Z`;
+    const endDate = `${date}T03:00:00.000Z`;
     
-    console.log(`[getDailyProcedures] Intervalo de data para o Elos: de ${startDate} até ${endDate}`);
+    console.log(`[getDailyProcedures] Intervalo de data para o Elos:`, {
+      startDate, 
+      endDate
+    });
 
     // Criar a string de cookies
     const cookies = createCookieString(authToken, structureId);
 
-    // Criar os dados do formulário
+    // Criar os dados do formulário - baseado exatamente no CURL bem-sucedido
     const formData = new URLSearchParams({
       sort: "",
       page: "1",
-      pageSize: "100",
       group: "",
       filter: "",
       establishment: "",
@@ -400,7 +396,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
 
     console.log("Enviando requisição de procedimentos diários:", {
       url: `${ELOS_URL}/Scheduler/Read`,
-      dados: { startDate, endDate, structureId },
+      dados: { startDate, endDate, structureId }
     });
 
     const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {
@@ -414,20 +410,19 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
         pragma: "no-cache",
         priority: "u=1, i",
         referer: `${ELOS_URL}/`,
-        "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"macOS"',
+        "sec-ch-ua": '"Chromium";v="135", "Not-A.Brand";v="8"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "user-agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
         cookie: cookies,
       },
     });
 
-    // A resposta será a lista de agendamentos, vamos extrair os procedimentos
+    // Extrair os procedimentos da resposta
     const procedures = response.data.Data
       ? response.data.Data.map((item: ScheduleItem) => ({
           id: item.Id,
@@ -446,7 +441,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       : [];
 
     console.log("Resposta de procedimentos diários:", {
-      total: procedures.length,
+      total: procedures.length
     });
 
     res.json({
