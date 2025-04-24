@@ -67,7 +67,17 @@ const formatElosDate = (elosDate: string): string => {
   if (!elosDate) return '';
   const timestamp = parseInt(elosDate.replace('/Date(', '').replace(')/', ''));
   const date = new Date(timestamp);
-  return date.toISOString();
+  
+  // Converter para UTC-3 (horário de Brasília)
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+  
+  // Formato ISO com UTC-3
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000-03:00`;
 };
 
 // Interface para itens de procedimento da API
@@ -103,6 +113,22 @@ interface ScheduleItem {
   StatusDescription: string;
   Locality_Id: number;
   Locality_Name: string;
+}
+
+// Interface para procedimentos processados
+interface ProcessedProcedure {
+  id: number;
+  clientId: number;
+  client: string;
+  clientPhone: string;
+  procedureId: number;
+  procedure: string;
+  localityId: number;
+  locality: string;
+  startTime: string;
+  endTime: string;
+  status: number;
+  statusDescription: string;
 }
 
 // Função para buscar tipos de procedimento
@@ -370,11 +396,12 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
     
-    // Formato exato igual ao cURL bem-sucedido
+    // Formato exato igual ao que a API Elos espera
     const startDate = `${date}T03:00:00.000Z`;
     const endDate = `${date}T03:00:00.000Z`;
     
     console.log(`[getDailyProcedures] Intervalo de data para o Elos:`, {
+      dataOriginal: date,
       startDate, 
       endDate
     });
@@ -458,7 +485,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     }
 
     // Extrair os procedimentos da resposta
-    const procedures = response.data.Data
+    const allProcedures = response.data.Data
       ? response.data.Data.map((item: ScheduleItem) => ({
           id: item.Id,
           clientId: item.Client_Id,
@@ -475,15 +502,25 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
         }))
       : [];
 
+    // FILTRAGEM CRÍTICA: Filtrar somente os procedimentos da data solicitada
+    // A data está em formato ISO (YYYY-MM-DD)
+    const filteredProcedures = allProcedures.filter((proc: ProcessedProcedure) => {
+      // Extrair a data no formato YYYY-MM-DD da startTime
+      const procDate = proc.startTime.split('T')[0];
+      return procDate === date;
+    });
+
     console.log("Resposta de procedimentos diários:", {
-      total: procedures.length
+      dataFiltrada: date,
+      totalAntesDoFiltro: allProcedures.length,
+      totalDepoisDoFiltro: filteredProcedures.length
     });
 
     res.json({
       success: true,
       date: date,
-      total: procedures.length,
-      procedures,
+      total: filteredProcedures.length,
+      procedures: filteredProcedures,
     });
   } catch (error) {
     console.error("Erro ao buscar procedimentos diários:", error);
