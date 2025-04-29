@@ -131,6 +131,17 @@ interface ProcessedProcedure {
   statusDescription: string;
 }
 
+// Interface para itens de procedimento da lista completa
+interface ServiceItem {
+  MaxDiscount: number;
+  id: number;
+  text: string;
+  CustomHtmlFormat: string | null;
+  Inactive: boolean;
+  Block: boolean;
+  AccessLimitNumber: number | null;
+}
+
 // Função para buscar tipos de procedimento
 export const getProcedureTypes = async (req: Request, res: Response) => {
   try {
@@ -541,5 +552,96 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       }
     }
     res.status(500).json({ error: "Erro ao buscar procedimentos diários" });
+  }
+};
+
+// Função para listar todos os procedimentos
+export const getAllProcedures = async (req: Request, res: Response) => {
+  try {
+    console.log("[getAllProcedures] Recebendo requisição:", {
+      method: req.method,
+      path: req.path,
+      headers: req.headers.authorization
+        ? "Com Authorization"
+        : "Sem Authorization",
+    });
+
+    const authToken = req.headers.authorization?.split(" ")[1];
+    const structureId = (req.headers["x-organization-structure"] as string) || "58";
+
+    if (!authToken) {
+      res.status(401).json({ error: "Token não fornecido" });
+      return;
+    }
+
+    // Obter parâmetros opcionais de consulta
+    const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string) : 200;
+    const pageNum = req.query.pageNum ? parseInt(req.query.pageNum as string) : 1;
+    const searchTerm = req.query.searchTerm || "";
+
+    // Criar a string de cookies
+    const cookies = createCookieString(authToken, structureId);
+
+    const timestamp = new Date().getTime();
+    const url = `${ELOS_URL}/Search/Get?searchTerm=${searchTerm}&pageSize=${pageSize}&pageNum=${pageNum}&searchName=ServiceItem&extraCondition=&_=${timestamp}`;
+
+    console.log("Enviando requisição para listar procedimentos:", {
+      url,
+    });
+
+    const response = await axios.get(url, {
+      headers: {
+        accept: "application/json, text/javascript, */*; q=0.01",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "cache-control": "no-cache",
+        dnt: "1",
+        origin: ELOS_URL,
+        pragma: "no-cache",
+        priority: "u=1, i",
+        referer: `${ELOS_URL}/`,
+        "sec-ch-ua": '"Chromium";v="135", "Not-A.Brand";v="8"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        "x-requested-with": "XMLHttpRequest",
+        cookie: cookies,
+      },
+    });
+
+    // Transformar a resposta para o formato desejado
+    const transformedResponse = {
+      success: true,
+      total: response.data.Total || 0,
+      procedures: response.data.Results
+        ? response.data.Results.map((item: ServiceItem) => ({
+            id: item.id,
+            nome: item.text,
+            desconto_maximo: item.MaxDiscount,
+            inativo: item.Inactive,
+            bloqueado: item.Block,
+            limite_acesso: item.AccessLimitNumber,
+          }))
+        : [],
+    };
+
+    console.log("Resposta transformada de procedimentos:", {
+      total: transformedResponse.total,
+    });
+
+    res.json(transformedResponse);
+  } catch (error) {
+    console.error("Erro ao listar procedimentos:", error);
+    if (axios.isAxiosError(error)) {
+      console.error("Detalhes do erro:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        headers: error.response?.headers,
+      });
+    }
+    res.status(500).json({ error: "Erro ao listar procedimentos" });
   }
 };
