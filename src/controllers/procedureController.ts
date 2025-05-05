@@ -389,9 +389,9 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     }
 
     // Obter parâmetros do corpo da requisição
-    const { date } = req.body;
+    const { date, procedureName } = req.body;
 
-    console.log(`[getDailyProcedures] Data recebida: ${date}`);
+    console.log(`[getDailyProcedures] Parâmetros recebidos:`, { date, procedureName });
 
     if (!date) {
       res.status(400).json({
@@ -498,7 +498,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
 
-    // Extrair os procedimentos da resposta
+    // Extrair e mapear os procedimentos da resposta
     const allProcedures = response.data.Data
       ? response.data.Data.map((item: ScheduleItem) => {
           const startTimeISO = formatElosDate(item.Start);
@@ -526,13 +526,14 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
               }
           }
 
+          // Retornar a interface ProcessedProcedure completa
           return {
             id: item.Id,
             clientId: item.Client_Id,
             client: item.Client_Name,
             clientPhone: item.Client_FlattenedPhones,
             procedureId: item.Item_Id,
-            procedure: item.Item_Name,
+            procedure: item.Item_Name, // Manter o nome original aqui
             localityId: item.Locality_Id,
             locality: item.Locality_Name,
             startTime: startTimeISO,
@@ -546,15 +547,29 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       : [];
 
     // FILTRAGEM CRÍTICA: Filtrar somente os procedimentos da data solicitada
-    const filteredProcedures = allProcedures.filter((proc: ProcessedProcedure) => {
+    let filteredProcedures = allProcedures.filter((proc: any) => { // Usar 'any' temporariamente ou definir a interface ProcessedProcedure com appointmentDate/Hour
       const procDate = proc.startTime.split('T')[0];
       return procDate === date;
     });
 
-    console.log("Resposta de procedimentos diários:", {
+    console.log(`[getDailyProcedures] Total após filtro de data (${date}): ${filteredProcedures.length}`);
+
+    // FILTRAGEM ADICIONAL: Filtrar por procedureName, se fornecido
+    if (procedureName && typeof procedureName === 'string' && procedureName.trim() !== '') {
+      const searchTerm = procedureName.trim().toLowerCase();
+      filteredProcedures = filteredProcedures.filter((proc: any) => { // Usar 'any' temporariamente
+          // Verificar se proc.procedure existe e é string antes de chamar toLowerCase()
+          return proc.procedure && typeof proc.procedure === 'string' && 
+                 proc.procedure.toLowerCase().includes(searchTerm);
+      });
+      console.log(`[getDailyProcedures] Filtrando por procedureName: '${procedureName}'. Total após filtro: ${filteredProcedures.length}`);
+    }
+
+
+    console.log("Resposta final de procedimentos diários:", {
       dataFiltrada: date,
-      totalAntesDoFiltro: allProcedures.length,
-      totalDepoisDoFiltro: filteredProcedures.length
+      filtroNome: procedureName || 'N/A',
+      totalFinal: filteredProcedures.length
     });
 
     res.json({
