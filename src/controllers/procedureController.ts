@@ -389,9 +389,9 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     }
 
     // Obter parâmetros do corpo da requisição
-    const { date, procedureName } = req.body;
+    const { date, procedureName, statusName } = req.body;
 
-    console.log(`[getDailyProcedures] Parâmetros recebidos:`, { date, procedureName });
+    console.log(`[getDailyProcedures] Parâmetros recebidos:`, { date, procedureName, statusName });
 
     if (!date) {
       res.status(400).json({
@@ -557,18 +557,29 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     // FILTRAGEM ADICIONAL: Filtrar por procedureName, se fornecido
     if (procedureName && typeof procedureName === 'string' && procedureName.trim() !== '') {
       const searchTerm = procedureName.trim().toLowerCase();
-      filteredProcedures = filteredProcedures.filter((proc: any) => { // Usar 'any' temporariamente
-          // Verificar se proc.procedure existe e é string antes de chamar toLowerCase()
+      filteredProcedures = filteredProcedures.filter((proc: any) => {
           return proc.procedure && typeof proc.procedure === 'string' && 
                  proc.procedure.toLowerCase().includes(searchTerm);
       });
       console.log(`[getDailyProcedures] Filtrando por procedureName: '${procedureName}'. Total após filtro: ${filteredProcedures.length}`);
     }
 
+    // FILTRAGEM ADICIONAL: Filtrar por statusName, se fornecido
+    if (statusName && typeof statusName === 'string' && statusName.trim() !== '') {
+      const searchTerm = statusName.trim().toLowerCase();
+      filteredProcedures = filteredProcedures.filter((proc: any) => {
+        // Verificar se proc.statusDescription existe e é string antes de chamar toLowerCase()
+        return proc.statusDescription && typeof proc.statusDescription === 'string' &&
+               proc.statusDescription.toLowerCase().includes(searchTerm);
+      });
+      console.log(`[getDailyProcedures] Filtrando por statusName: '${statusName}'. Total após filtro: ${filteredProcedures.length}`);
+    }
+
 
     console.log("Resposta final de procedimentos diários:", {
       dataFiltrada: date,
       filtroNome: procedureName || 'N/A',
+      filtroStatus: statusName || 'N/A', // Adicionar log do filtro de status
       totalFinal: filteredProcedures.length
     });
 
