@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import axios from "axios";
+import { format, parseISO } from 'date-fns';
+import { toZonedTime, format as formatTz } from 'date-fns-tz';
 
 const ELOS_URL = "https://botoclinic.elosclub.com.br";
+const TIME_ZONE = 'America/Sao_Paulo';
 
 // Função auxiliar para criar string de cookies
 const createCookieString = (authToken: string, structureId: string = "58") => {
@@ -66,18 +69,18 @@ const formatDateToBrazilian = (date: string): string => {
 const formatElosDate = (elosDate: string): string => {
   if (!elosDate) return '';
   const timestamp = parseInt(elosDate.replace('/Date(', '').replace(')/', ''));
+  if (isNaN(timestamp)) return '';
+
   const date = new Date(timestamp);
-  
-  // Converter para UTC-3 (horário de Brasília)
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const hours = String(date.getUTCHours()).padStart(2, '0');
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-  
-  // Formato ISO com UTC-3
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000-03:00`;
+
+  const zonedDate = toZonedTime(date, TIME_ZONE);
+
+  try {
+    return formatTz(zonedDate, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", { timeZone: TIME_ZONE });
+  } catch(e) {
+    console.error("Error formatting Elos Date with date-fns-tz:", e, " Date:", zonedDate, " Timestamp:", timestamp);
+    return new Date(timestamp).toISOString();
+  }
 };
 
 // Interface para itens de procedimento da API
@@ -497,26 +500,44 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
 
     // Extrair os procedimentos da resposta
     const allProcedures = response.data.Data
-      ? response.data.Data.map((item: ScheduleItem) => ({
-          id: item.Id,
-          clientId: item.Client_Id,
-          client: item.Client_Name,
-          clientPhone: item.Client_FlattenedPhones,
-          procedureId: item.Item_Id,
-          procedure: item.Item_Name,
-          localityId: item.Locality_Id,
-          locality: item.Locality_Name,
-          startTime: formatElosDate(item.Start),
-          endTime: formatElosDate(item.End),
-          status: item.Status,
-          statusDescription: item.StatusDescription
-        }))
+      ? response.data.Data.map((item: ScheduleItem) => {
+          const startTimeISO = formatElosDate(item.Start);
+          const endTimeISO = formatElosDate(item.End);
+
+          let appointmentDate = '';
+          let appointmentHour = '';
+
+          try {
+              if (startTimeISO) {
+                  const parsedDate = parseISO(startTimeISO);
+                  appointmentDate = format(parsedDate, 'dd/MM/yyyy');
+                  appointmentHour = format(parsedDate, 'HH:mm');
+              }
+          } catch (e) {
+              console.error(`Error parsing or formatting date ${startTimeISO}:`, e);
+          }
+
+          return {
+            id: item.Id,
+            clientId: item.Client_Id,
+            client: item.Client_Name,
+            clientPhone: item.Client_FlattenedPhones,
+            procedureId: item.Item_Id,
+            procedure: item.Item_Name,
+            localityId: item.Locality_Id,
+            locality: item.Locality_Name,
+            startTime: startTimeISO,
+            endTime: endTimeISO,
+            status: item.Status,
+            statusDescription: item.StatusDescription,
+            appointmentDate: appointmentDate,
+            appointmentHour: appointmentHour,
+          };
+        })
       : [];
 
     // FILTRAGEM CRÍTICA: Filtrar somente os procedimentos da data solicitada
-    // A data está em formato ISO (YYYY-MM-DD)
     const filteredProcedures = allProcedures.filter((proc: ProcessedProcedure) => {
-      // Extrair a data no formato YYYY-MM-DD da startTime
       const procDate = proc.startTime.split('T')[0];
       return procDate === date;
     });
