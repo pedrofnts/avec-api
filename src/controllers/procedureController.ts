@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import { format, parseISO } from 'date-fns';
-import { toZonedTime, format as formatTz } from 'date-fns-tz';
+import { toZonedTime, format as formatTz, formatInTimeZone } from 'date-fns-tz';
 
 const ELOS_URL = "https://botoclinic.elosclub.com.br";
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -510,11 +510,20 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
           try {
               if (startTimeISO) {
                   const parsedDate = parseISO(startTimeISO);
-                  appointmentDate = format(parsedDate, 'dd/MM/yyyy');
-                  appointmentHour = format(parsedDate, 'HH:mm');
+                  appointmentDate = formatInTimeZone(parsedDate, TIME_ZONE, 'dd/MM/yyyy');
+                  appointmentHour = formatInTimeZone(parsedDate, TIME_ZONE, 'HH:mm');
               }
           } catch (e) {
               console.error(`Error parsing or formatting date ${startTimeISO}:`, e);
+              try {
+                if (startTimeISO) {
+                    const parsedDate = new Date(startTimeISO);
+                    appointmentDate = format(parsedDate, 'dd/MM/yyyy');
+                    appointmentHour = format(parsedDate, 'HH:mm');
+                }
+              } catch (fallbackError) {
+                 console.error(`Fallback date formatting also failed for ${startTimeISO}:`, fallbackError);
+              }
           }
 
           return {
