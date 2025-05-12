@@ -421,3 +421,104 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Erro ao buscar aniversariantes" });
   }
 };
+
+// Função para buscar todos os clientes de uma unidade
+export const getAllClientsByUnit = async (req: Request, res: Response) => {
+  try {
+    const authToken = req.headers.authorization?.split(" ")[1];
+    const structureId = (req.headers["x-organization-structure"] as string) || "58";
+
+    if (!authToken) {
+      res.status(401).json({ error: "Token não fornecido" });
+      return;
+    }
+
+    // Período amplo para buscar todos os clientes
+    const initialDate = "12/05/2015";
+    const finalDate = "12/05/2025";
+
+    // Montar cookies com o id da unidade
+    const cookies = [
+      `tz=America%2FMaceio`,
+      `slot-routing-url=-`,
+      `current-organizational-structure=${structureId}`,
+      `_ga=GA1.1.1853101631.1733855667`,
+      `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
+      `Authentication=${authToken}`,
+    ].join("; ");
+
+    // Montar dados do formulário conforme o curl fornecido
+    const formData = new URLSearchParams({
+      sort: "",
+      group: "",
+      filter: "",
+      ReportId: "19",
+      ReportDetailPeriodId: "2",
+      "Filters[0].Field": "Genero",
+      "Filters[0].Type": "string",
+      "Filters[0].Value1": "",
+      "Filters[1].Field": "MIDIA",
+      "Filters[1].Type": "string",
+      "Filters[1].Value1": "",
+      "Filters[2].Field": "CreationDate",
+      "Filters[2].Type": "date",
+      "Filters[2].Value1": initialDate,
+      "Filters[2].Value2": finalDate,
+    }).toString();
+
+    const response = await axios.post(
+      `${ELOS_URL}/Report/Custom/List`,
+      formData,
+      {
+        headers: {
+          accept: "*/*",
+          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+          "cache-control": "no-cache",
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          dnt: "1",
+          origin: ELOS_URL,
+          pragma: "no-cache",
+          priority: "u=1, i",
+          referer: `${ELOS_URL}/`,
+          "sec-ch-ua": '"Not.A/Brand";v="99", "Chromium";v="136"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": '"macOS"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
+          "user-agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+          "x-requested-with": "XMLHttpRequest",
+          cookie: cookies,
+        },
+      }
+    );
+
+    // Mapear resposta para retornar apenas os campos desejados
+    const mapped = (response.data?.Data || []).map((item: any) => ({
+      id: item.Id,
+      nome: item.Name,
+      telefone: formatarTelefone(item.Telefone),
+      email: item.Email,
+      dataCriacao: item.CreationDate,
+      ultimoAtendimento: item.DateLastContract,
+    }));
+
+    res.json({
+      success: true,
+      structureId,
+      total: mapped.length,
+      clientes: mapped,
+    });
+  } catch (error) {
+    console.error("Erro ao buscar clientes da unidade:", error);
+    if (axios.isAxiosError(error)) {
+      console.error("Detalhes do erro:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        headers: error.response?.headers,
+      });
+    }
+    res.status(500).json({ error: "Erro ao buscar clientes da unidade" });
+  }
+};

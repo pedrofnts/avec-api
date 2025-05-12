@@ -12,4 +12,7 @@ router.post("/list-filtered", clientController.listFilteredClients);
 // Rota para buscar aniversariantes do dia
 router.post("/birthdays", clientController.getBirthdaysByDate);
 
+// Rota para buscar todos os clientes de uma unidade (GET na raiz)
+router.get("/", clientController.getAllClientsByUnit);
+
 export default router;
