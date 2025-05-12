@@ -437,15 +437,18 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
     const initialDate = "12/05/2015";
     const finalDate = "12/05/2025";
 
-    // Montar cookies com o id da unidade
+    // Montar cookies com o id da unidade - garantindo que não tenha espaço no valor
     const cookies = [
       `tz=America%2FMaceio`,
       `slot-routing-url=-`,
-      `current-organizational-structure=${structureId}`,
+      `current-organizational-structure=${structureId.trim()}`,
       `_ga=GA1.1.1853101631.1733855667`,
       `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
       `Authentication=${authToken}`,
     ].join("; ");
+
+    console.log("[getAllClientsByUnit] ID da estrutura:", structureId);
+    console.log("[getAllClientsByUnit] Cookie estrutura:", `current-organizational-structure=${structureId.trim()}`);
 
     // Montar dados do formulário conforme o curl fornecido
     const formData = new URLSearchParams({
@@ -465,6 +468,10 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
       "Filters[2].Value1": initialDate,
       "Filters[2].Value2": finalDate,
     }).toString();
+
+    // Logs para debug
+    console.log("[getAllClientsByUnit] Enviando requisição para:", `${ELOS_URL}/Report/Custom/List`);
+    console.log("[getAllClientsByUnit] FormData:", formData);
 
     const response = await axios.post(
       `${ELOS_URL}/Report/Custom/List`,
