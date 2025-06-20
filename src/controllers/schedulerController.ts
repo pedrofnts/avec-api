@@ -608,3 +608,89 @@ export const getScheduleById = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Erro ao buscar detalhes do agendamento" });
   }
 };
+
+// Função para buscar agendamentos dos próximos 6 meses
+export const getUpcomingSchedules = async (req: Request, res: Response) => {
+  try {
+    console.log("[getUpcomingSchedules] Recebendo requisição:", {
+      method: req.method,
+      path: req.path,
+      headers: req.headers.authorization
+        ? "Com Authorization"
+        : "Sem Authorization",
+    });
+
+    const authToken = req.headers.authorization?.split(" ")[1];
+    const structureId = (req.headers["x-organization-structure"] as string) || "58";
+
+    if (!authToken) {
+      res.status(401).json({ error: "Token não fornecido" });
+      return;
+    }
+
+    // Calcular datas de início (hoje) e fim (6 meses à frente)
+    const startDate = new Date().toISOString();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 6);
+    const endDateISO = endDate.toISOString();
+
+    // Criar a string de cookies
+    const cookies = createCookieString(authToken, structureId);
+
+    // Criar os dados do formulário
+    const formData = new URLSearchParams({
+      sort: "",
+      page: "1",
+      pageSize: "1000", // Aumentar o tamanho da página para pegar mais registros
+      group: "",
+      filter: "",
+      establishment: "",
+      locality: "",
+      start: startDate,
+      end: endDateISO,
+    }).toString();
+
+    console.log("Enviando requisição de agendamentos:", {
+      url: `${ELOS_URL}/Scheduler/Read`,
+      dados: { startDate, endDateISO, structureId },
+    });
+
+    const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {
+      headers: {
+        accept: "*/*",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "cache-control": "no-cache",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        dnt: "1",
+        origin: ELOS_URL,
+        pragma: "no-cache",
+        priority: "u=1, i",
+        referer: `${ELOS_URL}/`,
+        "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "x-requested-with": "XMLHttpRequest",
+        cookie: cookies,
+      },
+    });
+
+    console.log("Resposta de agendamentos recebida");
+
+    res.json(response.data);
+  } catch (error) {
+    console.error("Erro ao buscar agendamentos:", error);
+    if (axios.isAxiosError(error)) {
+      console.error("Detalhes do erro:", {
+        status: error.response?.status,
+        data: error.response?.data,
+        headers: error.response?.headers,
+      });
+    }
+    res.status(500).json({ error: "Erro ao buscar agendamentos" });
+  }
+};
