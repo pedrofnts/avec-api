@@ -1,5 +1,5 @@
 {
-  "name": "api-grove",
+  "name": "beauty-admin-api",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -12,10 +12,11 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "API para o sistema de agendamentos Grove",
+  "description": "API para sistema de gestão de beleza e agendamentos",
   "dependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
+    "@types/puppeteer": "^5.4.7",
     "axios": "^1.8.4",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
@@ -23,6 +24,7 @@
     "date-fns-tz": "^3.2.0",
     "express": "^5.1.0",
     "nodemon": "^3.1.9",
+    "puppeteer": "^24.11.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

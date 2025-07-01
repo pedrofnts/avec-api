@@ -33,5 +33,5 @@ app.get("/health", (req, res) => {
 
 app.listen(port, () => {
   console.log(`Servidor rodando em http://localhost:${port}`);
-  console.log("API Grove inicializada com sucesso!");
+  console.log("Beauty Admin API inicializada com sucesso!");
 });

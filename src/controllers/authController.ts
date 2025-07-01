@@ -1,142 +1,183 @@
 import { Request, Response, NextFunction } from "express";
-import axios from "axios";
-import * as cheerio from "cheerio";
+import puppeteer from "puppeteer";
 
-const ELOS_URL = "https://botoclinic.elosclub.com.br";
+// Configurações que podem ser definidas via variáveis de ambiente
+const LOGIN_URL = process.env.LOGIN_URL || "https://admin.avec.beauty/moringaescovaria/admin";
+const LOGIN_TIMEOUT = parseInt(process.env.LOGIN_TIMEOUT || "30000");
 
-// Função para obter o token de verificação
-const getRequestVerificationToken = async (): Promise<string> => {
-  try {
-    const response = await axios.get(`${ELOS_URL}/Login`);
-    const $ = cheerio.load(response.data);
-    const token = $('input[name="__RequestVerificationToken"]').val() as string;
+// Interface para a resposta de login
+interface LoginResponse {
+  success: boolean;
+  token?: string;
+  message?: string;
+}
 
-    if (!token) {
-      throw new Error("Token de verificação não encontrado");
-    }
-
-    return token;
-  } catch (error) {
-    console.error("Erro ao obter token de verificação:", error);
-    throw error;
-  }
-};
-
-// Função de login
+// Função de login usando Puppeteer
 export const login = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  let browser = null;
+  
   try {
     console.log("[login] Recebendo requisição de login:", {
       method: req.method,
       path: req.path,
       body: {
-        login: req.body.login ? "Fornecido" : "Não fornecido",
+        email: req.body.email ? "Fornecido" : "Não fornecido",
         password: req.body.password ? "Fornecido" : "Não fornecido",
       },
     });
 
-    const { login, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!login || !password) {
-      res.status(400).json({ error: "Login e senha são obrigatórios" });
+    if (!email || !password) {
+      res.status(400).json({ error: "Email e senha são obrigatórios" });
       return;
     }
 
-    // Obter o token de verificação
-    const token = await getRequestVerificationToken();
-    console.log("Token de verificação obtido com sucesso");
+    console.log("[login] Iniciando navegador Puppeteer...");
 
-    // Preparar dados do fingerprint
-    const fingerPrint = {
-      OS: "OS X",
-      BrowserName: "Chrome",
-      BrowserInfo: "135.0.0.0 - 64 bits",
-      IpAddress: "127.0.0.1", // O IP real será determinado pelo servidor
-    };
-
-    // Preparar dados para a requisição de login
-    const formData = new URLSearchParams({
-      FingerPrint: JSON.stringify(fingerPrint),
-      IsEvupProvider: "False",
-      Login: login,
-      Password: password,
-      __RequestVerificationToken: token,
-      RememberMe: "false",
+    // Configurar o navegador
+    browser = await puppeteer.launch({
+      headless: true, // Mude para false se quiser ver o navegador
+      defaultViewport: { width: 1280, height: 720 },
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ]
     });
 
-    // Fazer a requisição de login
-    const loginResponse = await axios.post(`${ELOS_URL}/Login`, formData, {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-        Referer: `${ELOS_URL}/Login`,
-        Origin: ELOS_URL,
-      },
-      maxRedirects: 0,
-      validateStatus: (status) => status >= 200 && status < 400,
+    const page = await browser.newPage();
+
+    // Configurar timeout e user agent
+    await page.setDefaultTimeout(LOGIN_TIMEOUT);
+    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36');
+
+    console.log(`[login] Navegando para: ${LOGIN_URL}`);
+
+    // Navegar para a página de login
+    await page.goto(LOGIN_URL, { 
+      waitUntil: 'networkidle2',
+      timeout: LOGIN_TIMEOUT 
     });
+
+    console.log("[login] Página carregada, procurando elementos de login...");
+
+    // Aguardar os elementos de login aparecerem
+    await page.waitForSelector("input[placeholder='Digite aqui...']", { timeout: 10000 });
+    await page.waitForSelector("input[placeholder='Digite sua senha...']", { timeout: 10000 });
+
+    console.log("[login] Elementos encontrados, preenchendo credenciais...");
+
+    // Encontrar e preencher o campo de email
+    const emailInput = await page.$("input[placeholder='Digite aqui...']");
+    if (!emailInput) {
+      throw new Error("Campo de email não encontrado");
+    }
+    await emailInput.click();
+    await emailInput.type(email, { delay: 100 });
+
+    // Encontrar e preencher o campo de senha
+    const passwordInput = await page.$("input[placeholder='Digite sua senha...']");
+    if (!passwordInput) {
+      throw new Error("Campo de senha não encontrado");
+    }
+    await passwordInput.click();
+    await passwordInput.type(password, { delay: 100 });
+
+    console.log("[login] Credenciais preenchidas, clicando no botão de login...");
+
+    // Encontrar e clicar no botão de login - usando um seletor mais simples
+    const loginButton = await page.$("button[class*='bg-primary-main'][class*='text-neutral-white']");
+    
+    if (!loginButton) {
+      throw new Error("Botão de login não encontrado");
+    }
+
+    // Aguardar navegação após o clique
+    await Promise.all([
+      page.waitForNavigation({ 
+        waitUntil: 'networkidle2', 
+        timeout: LOGIN_TIMEOUT 
+      }),
+      loginButton.click()
+    ]);
+
+    console.log("[login] Login executado, verificando resultado...");
 
     // Verificar se o login foi bem-sucedido
-    const cookies = loginResponse.headers["set-cookie"];
+    const currentUrl = page.url();
+    console.log(`[login] URL atual após login: ${currentUrl}`);
 
-    if (!cookies) {
-      res.status(401).json({ error: "Credenciais inválidas" });
-      return;
+    // Se ainda estiver na página de login, provavelmente houve erro
+    if (currentUrl.includes('/login') || currentUrl === LOGIN_URL) {
+      // Verificar se há mensagem de erro na página
+      const errorMessage = await page.evaluate(() => {
+        const errorElements = document.querySelectorAll('[class*="error"], [class*="alert"], [class*="warning"]');
+        return errorElements.length > 0 ? (errorElements[0].textContent || '') : '';
+      });
+
+      throw new Error(`Login falhou: ${errorMessage || 'Credenciais inválidas'}`);
     }
 
-    // Extrair o cookie de autenticação
-    const authCookie = cookies.find((cookie: string) =>
-      cookie.includes("Authentication=")
-    );
+    console.log("[login] Login bem-sucedido, extraindo cookies...");
 
-    if (!authCookie) {
-      res.status(401).json({ error: "Token de autenticação não encontrado" });
-      return;
+    // Extrair apenas o cookie de sessão necessário
+    const cookies = await page.cookies();
+    
+    // Procurar especificamente pelo cookie ci3_session
+    const sessionCookie = cookies.find(cookie => cookie.name === 'ci3_session');
+
+    if (!sessionCookie) {
+      throw new Error('Cookie de sessão não encontrado após login');
     }
 
-    // Extrair apenas o valor do token de autenticação
-    const authToken = authCookie.split(";")[0].replace("Authentication=", "");
+    console.log(`[login] Token de sessão extraído: ${sessionCookie.value.substring(0, 20)}...`);
 
-    // Retornar o token de autenticação
+    console.log("[login] Resposta preparada, fechando navegador...");
+
     res.status(200).json({
       success: true,
-      token: authToken,
-      message: "Login realizado com sucesso",
+      token: sessionCookie.value
     });
+
   } catch (error: any) {
     console.error("Erro durante o login:", error);
 
-    // Verificar se é um erro de redirecionamento (geralmente indica login bem-sucedido)
-    if (axios.isAxiosError(error) && error.response?.status === 302) {
-      const cookies = error.response.headers["set-cookie"];
-
-      if (cookies) {
-        const authCookie = cookies.find((cookie: string) =>
-          cookie.includes("Authentication=")
-        );
-
-        if (authCookie) {
-          const authToken = authCookie
-            .split(";")[0]
-            .replace("Authentication=", "");
-
-          res.status(200).json({
-            success: true,
-            token: authToken,
-            message: "Login realizado com sucesso",
-          });
-          return;
-        }
+    res.status(500).json({
+      success: false,
+      message: `Erro durante o processo de login: ${error.message}`
+    });
+  } finally {
+    // Sempre fechar o navegador
+    if (browser) {
+      try {
+        await browser.close();
+        console.log("[login] Navegador fechado");
+      } catch (closeError) {
+        console.error("Erro ao fechar navegador:", closeError);
       }
     }
-
-    res.status(500).json({
-      error: "Erro durante o processo de login",
-      details: error.message,
-    });
   }
+};
+
+// Função para testar o login (endpoint de teste)
+export const testLogin = async (req: Request, res: Response): Promise<void> => {
+  const testCredentials = {
+    email: "biomaamorsjc@gmail.com",
+    password: "Biomaamorsjc@2025"
+  };
+
+  console.log("[testLogin] Iniciando teste de login com credenciais padrão");
+
+  // Redirecionar para a função de login principal
+  req.body = testCredentials;
+  await login(req, res, () => {});
 };

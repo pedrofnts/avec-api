@@ -1,17 +1,16 @@
 import { Request, Response } from "express";
 import axios from "axios";
 
-const ELOS_URL = "https://botoclinic.elosclub.com.br";
+// Configurações que podem ser definidas via variáveis de ambiente
+const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
+const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 
-// Função auxiliar para criar string de cookies
-const createCookieString = (authToken: string, structureId: string = "58") => {
+// Função auxiliar para criar string de cookies genérica
+const createCookieString = (authToken: string, structureId: string = "1") => {
   return [
-    `tz=America%2FMaceio`,
-    `slot-routing-url=-`,
-    `current-organizational-structure=${structureId}`,
-    `_ga=GA1.1.1853101631.1733855667`,
-    `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-    `Authentication=${authToken}`,
+    `session=${authToken}`,
+    `current-structure=${structureId}`,
+    `tz=America%2FSao_Paulo`,
   ].join("; ");
 };
 
@@ -32,7 +31,7 @@ export const listOrganizationalStructures = async (
 
     const authToken = req.headers.authorization?.split(" ")[1];
     const structureId =
-      (req.headers["x-organization-structure"] as string) || "151"; // Valor padrão se não for fornecido
+      (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -50,12 +49,12 @@ export const listOrganizationalStructures = async (
     }).toString();
 
     console.log("Enviando requisição de estruturas organizacionais:", {
-      url: `${ELOS_URL}/OrganizationalStructure/ListUser`,
+      url: `${API_BASE_URL}/organizational-structures/list`,
       structureId,
     });
 
     const response = await axios.post(
-      `${ELOS_URL}/OrganizationalStructure/ListUser`,
+      `${API_BASE_URL}/organizational-structures/list`,
       formData,
       {
         headers: {
@@ -64,21 +63,21 @@ export const listOrganizationalStructures = async (
           "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
+          referer: `${API_BASE_URL}/`,
           "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
@@ -138,21 +137,13 @@ export const setCurrentOrganizationalStructure = async (
       return;
     }
 
-    // Criar a string de cookies
-    // Já incluindo a nova estrutura no cookie
-    const cookies = [
-      `tz=America%2FMaceio`,
-      `slot-routing-url=-`,
-      `_ga=GA1.1.1853101631.1733855667`,
-      `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-      `Authentication=${authToken}`,
-      `current-organizational-structure=${structureId}`,
-    ].join("; ");
+    // Criar a string de cookies com a nova estrutura
+    const cookies = createCookieString(authToken, structureId);
 
     console.log(
       "Enviando requisição de definição de estrutura organizacional atual:",
       {
-        url: `${ELOS_URL}/OrganizationalStructure/GetByIdWithConfigurationsForDomain`,
+        url: `${API_BASE_URL}/organizational-structures/set-current`,
         structureId,
       }
     );
@@ -160,28 +151,28 @@ export const setCurrentOrganizationalStructure = async (
     // Esta requisição é feita para obter os detalhes da estrutura selecionada
     // Equivalente ao que acontece na interface web ao selecionar uma nova unidade
     const response = await axios.get(
-      `${ELOS_URL}/OrganizationalStructure/GetByIdWithConfigurationsForDomain?id=${structureId}`,
+      `${API_BASE_URL}/organizational-structures/set-current?id=${structureId}`,
       {
         headers: {
           accept: "*/*",
           "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
           "cache-control": "no-cache",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
+          referer: `${API_BASE_URL}/`,
           "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
@@ -194,14 +185,14 @@ export const setCurrentOrganizationalStructure = async (
     // para que o cliente atualize seu cookie com a nova estrutura
     res.setHeader(
       "Set-Cookie",
-      `current-organizational-structure=${structureId}; Path=/; HttpOnly; SameSite=Strict`
+      `current-structure=${structureId}; Path=/; HttpOnly; SameSite=Strict`
     );
 
     res.json({
       success: true,
-      message: "Estrutura organizacional atual definida com sucesso",
-      structureId,
+      structureId: structureId,
       data: response.data,
+      message: "Estrutura organizacional definida com sucesso",
     });
   } catch (error) {
     console.error("Erro ao definir estrutura organizacional atual:", error);

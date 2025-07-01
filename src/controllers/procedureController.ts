@@ -3,18 +3,17 @@ import axios from "axios";
 import { format, parseISO } from 'date-fns';
 import { toZonedTime, format as formatTz, formatInTimeZone } from 'date-fns-tz';
 
-const ELOS_URL = "https://botoclinic.elosclub.com.br";
+// Configurações que podem ser definidas via variáveis de ambiente
+const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
+const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 const TIME_ZONE = 'America/Sao_Paulo';
 
-// Função auxiliar para criar string de cookies
-const createCookieString = (authToken: string, structureId: string = "58") => {
+// Função auxiliar para criar string de cookies genérica
+const createCookieString = (authToken: string, structureId: string = "1") => {
   return [
-    `tz=America%2FMaceio`,
-    `slot-routing-url=-`,
-    `current-organizational-structure=${structureId}`,
-    `_ga=GA1.1.1853101631.1733855667`,
-    `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-    `Authentication=${authToken}`,
+    `session=${authToken}`,
+    `current-structure=${structureId}`,
+    `tz=America%2FSao_Paulo`,
   ].join("; ");
 };
 
@@ -65,21 +64,32 @@ const formatDateToBrazilian = (date: string): string => {
   }
 };
 
-// Função auxiliar para converter o formato de data do Elos
-const formatElosDate = (elosDate: string): string => {
-  if (!elosDate) return '';
-  const timestamp = parseInt(elosDate.replace('/Date(', '').replace(')/', ''));
-  if (isNaN(timestamp)) return '';
-
-  const date = new Date(timestamp);
-
-  const zonedDate = toZonedTime(date, TIME_ZONE);
-
+// Função auxiliar para converter o formato de data
+const formatDate = (dateString: string): string => {
+  if (!dateString) return '';
+  
   try {
-    return formatTz(zonedDate, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", { timeZone: TIME_ZONE });
-  } catch(e) {
-    console.error("Error formatting Elos Date with date-fns-tz:", e, " Date:", zonedDate, " Timestamp:", timestamp);
-    return new Date(timestamp).toISOString();
+    // Se a string contém "/Date(", é um timestamp do .NET
+    if (dateString.includes('/Date(')) {
+      const timestamp = parseInt(dateString.replace('/Date(', '').replace(')/', ''));
+      if (isNaN(timestamp)) return '';
+
+      const date = new Date(timestamp);
+      const zonedDate = toZonedTime(date, TIME_ZONE);
+
+      try {
+        return formatTz(zonedDate, "yyyy-MM-dd'T'HH:mm:ss.SSSXXX", { timeZone: TIME_ZONE });
+      } catch(e) {
+        console.error("Error formatting Date with date-fns-tz:", e, " Date:", zonedDate, " Timestamp:", timestamp);
+        return new Date(timestamp).toISOString();
+      }
+    }
+    
+    // Se não é timestamp .NET, retorna como está ou tenta formatar
+    return dateString;
+  } catch (error) {
+    console.error("Erro ao formatar data:", error);
+    return dateString;
   }
 };
 
@@ -158,7 +168,7 @@ export const getProcedureTypes = async (req: Request, res: Response) => {
 
     const authToken = req.headers.authorization?.split(" ")[1];
     const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
+      (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -169,7 +179,7 @@ export const getProcedureTypes = async (req: Request, res: Response) => {
     const cookies = createCookieString(authToken, structureId);
 
     const timestamp = new Date().getTime();
-    const url = `${ELOS_URL}/Search/Get?searchTerm=&pageSize=100&pageNum=1&searchName=ItemClassifier&extraCondition=&_=${timestamp}`;
+    const url = `${API_BASE_URL}/search/procedure-types?pageSize=100&pageNum=1&extraCondition=&_=${timestamp}`;
 
     console.log("Enviando requisição de tipos de procedimento:", {
       url,
@@ -181,43 +191,26 @@ export const getProcedureTypes = async (req: Request, res: Response) => {
         "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "cache-control": "no-cache",
         dnt: "1",
-        origin: ELOS_URL,
+        origin: API_BASE_URL,
         pragma: "no-cache",
         priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
+        referer: `${API_BASE_URL}/`,
         "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"macOS"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
         cookie: cookies,
       },
+      timeout: API_TIMEOUT,
     });
 
-    // Transformar a resposta para o formato esperado
-    const transformedResponse = {
-      Results: response.data.Results
-        ? response.data.Results.map((item: ProcedureItem) => ({
-            id: item.Id,
-            text: item.Text,
-            CustomHtmlFormat: item.CustomHtmlFormat,
-            Inactive: item.Inactive === "True",
-            Block: item.Block === "True",
-            AccessLimitNumber: item.AccessLimitNumber,
-          }))
-        : [],
-      Total: response.data.Total || 0,
-    };
+    console.log("Resposta de tipos de procedimento recebida");
 
-    console.log("Resposta transformada de tipos de procedimento:", {
-      total: transformedResponse.Results.length,
-    });
-
-    res.json(transformedResponse);
+    res.json(response.data);
   } catch (error) {
     console.error("Erro ao buscar tipos de procedimento:", error);
     if (axios.isAxiosError(error)) {
@@ -245,7 +238,7 @@ export const getAvailableProcedures = async (req: Request, res: Response) => {
 
     const authToken = req.headers.authorization?.split(" ")[1];
     const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
+      (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -255,28 +248,18 @@ export const getAvailableProcedures = async (req: Request, res: Response) => {
     // Obter parâmetros do corpo da requisição
     const {
       Client_Id,
-      ItemClassifier_Id,
-      InitDate,
-      EndDate,
-      InitTime,
-      EndTime,
-      AllowDocking = false,
-      Locality_Id = "",
-      SchedulingBySystem = false,
+      sort = "",
+      page = 1,
+      pageSize = 100,
+      group = "",
+      filter = "",
     } = req.body;
 
     // Validar parâmetros obrigatórios
-    if (!Client_Id || !ItemClassifier_Id || !InitDate || !EndDate) {
+    if (!Client_Id) {
       res.status(400).json({
-        error: "Parâmetros obrigatórios não fornecidos",
-        required: [
-          "Client_Id",
-          "ItemClassifier_Id",
-          "InitDate",
-          "EndDate",
-          "InitTime",
-          "EndTime",
-        ],
+        error: "Client_Id não fornecido",
+        required: ["Client_Id"],
       });
       return;
     }
@@ -285,36 +268,34 @@ export const getAvailableProcedures = async (req: Request, res: Response) => {
     const cookies = createCookieString(authToken, structureId);
 
     // Criar os dados do formulário
-    const formData = new URLSearchParams();
-    formData.append("Client_Id", Client_Id.toString());
-    formData.append("ItemClassifier_Id", ItemClassifier_Id.toString());
-    formData.append("InitDate", InitDate);
-    formData.append("EndDate", EndDate);
-    formData.append("InitTime", InitTime);
-    formData.append("EndTime", EndTime);
-    formData.append("AllowDocking", AllowDocking.toString());
-    formData.append("Locality_Id", Locality_Id.toString() || "");
-    formData.append("SchedulingBySystem", SchedulingBySystem.toString());
+    const formData = new URLSearchParams({
+      Client_Id: Client_Id.toString(),
+      sort: sort.toString(),
+      page: page.toString(),
+      pageSize: pageSize.toString(),
+      group: group.toString(),
+      filter: filter.toString(),
+    }).toString();
 
     console.log("Enviando requisição de procedimentos disponíveis:", {
-      url: `${ELOS_URL}/Scheduler/AvailabilityProcedures`,
-      dados: req.body,
+      url: `${API_BASE_URL}/procedures/available`,
+      dados: { Client_Id, structureId },
     });
 
     const response = await axios.post(
-      `${ELOS_URL}/Scheduler/AvailabilityProcedures`,
+      `${API_BASE_URL}/procedures/available`,
       formData,
       {
         headers: {
-          accept: "application/json, text/javascript, */*; q=0.01",
+          accept: "*/*",
           "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
           "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
+          referer: `${API_BASE_URL}/`,
           "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
@@ -329,32 +310,20 @@ export const getAvailableProcedures = async (req: Request, res: Response) => {
       }
     );
 
-    // Transformar a resposta para o formato que o cliente espera
-    const transformedData = {
-      Success: true,
-      Items: Array.isArray(response.data)
-        ? response.data.map((item: AvailableProcedureItem) => ({
-            Id: item.Item_Id || 0,
-            Name: item.Item_Name || "",
-            Duration: parseDuration(item.Duration || "0:00"),
-            Description: item.Description || "",
-            Value: 0, // Este campo não vem na resposta, mas é esperado pelo cliente
-            SpecialistItem_Id: 0,
-            Item_Id: item.Item_Id || 0,
-            Docking: item.HasBlock || false,
-            PrepareTime: 0,
-            FinishTime: 0,
-            ItemGroup: null,
-          }))
-        : [],
-    };
+    console.log("Resposta de procedimentos disponíveis recebida");
 
-    console.log("Resposta transformada de procedimentos disponíveis:", {
-      success: transformedData.Success,
-      total: transformedData.Items.length,
-    });
+    // Processar e estruturar a resposta
+    let processedData = response.data;
 
-    res.json(transformedData);
+    if (response.data && response.data.Data) {
+      processedData = {
+        ...response.data,
+        totalProcedures: response.data.Data.length,
+        structureId,
+      };
+    }
+
+    res.json(processedData);
   } catch (error) {
     console.error("Erro ao buscar procedimentos disponíveis:", error);
     if (axios.isAxiosError(error)) {
@@ -410,11 +379,11 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       return;
     }
     
-    // Formato exato igual ao que a API Elos espera
+    // Formato exato para buscar procedimentos do dia
     const startDate = `${date}T03:00:00.000Z`;
     const endDate = `${date}T03:00:00.000Z`;
     
-    console.log(`[getDailyProcedures] Intervalo de data para o Elos:`, {
+    console.log(`[getDailyProcedures] Intervalo de data:`, {
       dataOriginal: date,
       startDate, 
       endDate
@@ -435,22 +404,26 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
       end: endDate,
     }).toString();
 
-    console.log("Enviando requisição de procedimentos diários:", {
-      url: `${ELOS_URL}/Scheduler/Read`,
-      dados: { startDate, endDate, structureId }
+    console.log("Enviando requisição de procedimentos do dia:", {
+      url: `${API_BASE_URL}/procedures/daily`,
+      date,
+      structureId,
     });
 
-    const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {
-      headers: {
-        accept: "*/*",
-        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cache-control": "no-cache",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        dnt: "1",
-        origin: ELOS_URL,
-        pragma: "no-cache",
-        priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
+    const response = await axios.post(
+      `${API_BASE_URL}/procedures/daily`,
+      `date=${encodeURIComponent(date)}`,
+      {
+        headers: {
+          accept: "*/*",
+          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+          "cache-control": "no-cache",
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          dnt: "1",
+          origin: API_BASE_URL,
+          pragma: "no-cache",
+          priority: "u=1, i",
+          referer: `${API_BASE_URL}/`,
         "sec-ch-ua": '"Chromium";v="135", "Not-A.Brand";v="8"',
         "sec-ch-ua-mobile": "?1",
         "sec-ch-ua-platform": '"Android"',
@@ -468,7 +441,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
 
     // Verificar se houve erro de autenticação
     if (response.status === 401 || response.status === 403) {
-      console.error("Erro de autenticação na API Elos:", {
+      console.error("Erro de autenticação na API:", {
         status: response.status,
         data: response.data
       });
@@ -490,7 +463,7 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
 
     // Verificar se a resposta contém dados válidos em formato JSON
     if (!response.data || typeof response.data !== 'object' || !response.data.Data) {
-      console.error("Resposta inválida da API Elos:", {
+      console.error("Resposta inválida da API:", {
         status: response.status,
         data: response.data
       });
@@ -501,8 +474,8 @@ export const getDailyProcedures = async (req: Request, res: Response) => {
     // Extrair e mapear os procedimentos da resposta
     const allProcedures = response.data.Data
       ? response.data.Data.map((item: ScheduleItem) => {
-          const startTimeISO = formatElosDate(item.Start);
-          const endTimeISO = formatElosDate(item.End);
+                  const startTimeISO = formatDate(item.Start);
+        const endTimeISO = formatDate(item.End);
 
           let appointmentDate = '';
           let appointmentHour = '';
@@ -623,7 +596,7 @@ export const getAllProcedures = async (req: Request, res: Response) => {
     });
 
     const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId = (req.headers["x-organization-structure"] as string) || "58";
+    const structureId = (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -639,22 +612,23 @@ export const getAllProcedures = async (req: Request, res: Response) => {
     const cookies = createCookieString(authToken, structureId);
 
     const timestamp = new Date().getTime();
-    const url = `${ELOS_URL}/Search/Get?searchTerm=${searchTerm}&pageSize=${pageSize}&pageNum=${pageNum}&searchName=ServiceItem&extraCondition=&_=${timestamp}`;
+    const url = `${API_BASE_URL}/procedures/all?pageSize=1000&pageNum=1&extraCondition=&_=${timestamp}`;
 
-    console.log("Enviando requisição para listar procedimentos:", {
+    console.log("Enviando requisição de todos os procedimentos:", {
       url,
+      structureId,
     });
 
     const response = await axios.get(url, {
       headers: {
-        accept: "application/json, text/javascript, */*; q=0.01",
+        accept: "*/*",
         "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "cache-control": "no-cache",
         dnt: "1",
-        origin: ELOS_URL,
+        origin: API_BASE_URL,
         pragma: "no-cache",
         priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
+        referer: `${API_BASE_URL}/`,
         "sec-ch-ua": '"Chromium";v="135", "Not-A.Brand";v="8"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"macOS"',

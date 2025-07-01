@@ -1,18 +1,14 @@
 import { Request, Response } from "express";
 import axios from "axios";
+import { formatAgendamentoComStatus, getAllStatus } from "../utils/statusMapper";
 
-const ELOS_URL = "https://botoclinic.elosclub.com.br";
+// Configurações que podem ser definidas via variáveis de ambiente
+const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
+const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 
-// Função auxiliar para criar string de cookies
-const createCookieString = (authToken: string, structureId: string = "58") => {
-  return [
-    `tz=America%2FMaceio`,
-    `slot-routing-url=-`,
-    `current-organizational-structure=${structureId}`,
-    `_ga=GA1.1.1853101631.1733855667`,
-    `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-    `Authentication=${authToken}`,
-  ].join("; ");
+// Função auxiliar para criar string de cookies para avec.beauty
+const createCookieString = (authToken: string, structureId: string = "1") => {
+  return `ci3_session=${authToken}`;
 };
 
 // Função para buscar agendamentos
@@ -29,7 +25,7 @@ export const getSchedules = async (req: Request, res: Response) => {
 
     const authToken = req.headers.authorization?.split(" ")[1];
     const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
+      (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
@@ -47,13 +43,15 @@ export const getSchedules = async (req: Request, res: Response) => {
       locality = "",
       start,
       end,
+      data,
+      profissionalIdArr,
     } = req.body;
 
     // Validar parâmetros obrigatórios
-    if (!start || !end) {
+    if (!start && !data) {
       res.status(400).json({
         error: "Parâmetros de data não fornecidos",
-        required: ["start", "end"],
+        required: ["start e end", "ou", "data"],
       });
       return;
     }
@@ -61,51 +59,199 @@ export const getSchedules = async (req: Request, res: Response) => {
     // Criar a string de cookies
     const cookies = createCookieString(authToken, structureId);
 
-    // Criar os dados do formulário
-    const formData = new URLSearchParams({
-      sort: sort.toString(),
-      page: page.toString(),
-      pageSize: pageSize.toString(),
-      group: group.toString(),
-      filter: filter.toString(),
-      establishment: establishment.toString(),
-      locality: locality.toString(),
-      start: start.toString(),
-      end: end.toString(),
-    }).toString();
+    let endpoint = "/admin/agenda/carregarAgenda";
+    let requestData = "";
+    let contentType = "application/x-www-form-urlencoded; charset=UTF-8";
+
+    // Verificar se é formato avec.beauty ou formato genérico
+    if (data && profissionalIdArr) {
+      // Formato avec.beauty - converter IDs para formato esperado
+      const formattedProfissionais = Array.isArray(profissionalIdArr) 
+        ? profissionalIdArr.map(id => ({ id: id.toString() }))
+        : [{ id: profissionalIdArr.toString() }];
+      
+      requestData = `dados=${JSON.stringify({ data, profissionalIdArr: formattedProfissionais })}`;
+    } else {
+      // Formato genérico
+      const formData = new URLSearchParams({
+        sort: sort.toString(),
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+        group: group.toString(),
+        filter: filter.toString(),
+        establishment: establishment.toString(),
+        locality: locality.toString(),
+        start: start?.toString() || "",
+        end: end?.toString() || "",
+      });
+      requestData = formData.toString();
+      endpoint = "/scheduler/read";
+    }
 
     console.log("Enviando requisição de agendamentos:", {
-      url: `${ELOS_URL}/Scheduler/Read`,
-      dados: { start, end, structureId },
+      url: `${API_BASE_URL}${endpoint}`,
+      dados: data ? { data, profissionalIdArr: data && profissionalIdArr ? Array.isArray(profissionalIdArr) ? profissionalIdArr.map(id => ({ id: id.toString() })) : [{ id: profissionalIdArr.toString() }] : profissionalIdArr } : { start, end, structureId },
+      cookies,
+      requestData: requestData.substring(0, 200) + (requestData.length > 200 ? '...' : '')
     });
 
-    const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {
+    const response = await axios.post(`${API_BASE_URL}${endpoint}`, requestData, {
       headers: {
-        accept: "*/*",
+        accept: "application/json, text/javascript, */*; q=0.01",
         "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cache-control": "no-cache",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "content-type": contentType,
         dnt: "1",
-        origin: ELOS_URL,
-        pragma: "no-cache",
-        priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
-        "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
+        origin: API_BASE_URL,
+        referer: `${API_BASE_URL}/admin/agenda`,
+        "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"macOS"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
         cookie: cookies,
       },
+      timeout: API_TIMEOUT,
     });
 
-    console.log("Resposta de agendamentos recebida");
+        console.log("Resposta de agendamentos recebida");
 
-    res.json(response.data);
+    // Formatar agendamentos em lista simples e buscar detalhes
+    const responseData = response.data;
+    const agendamentos = [];
+
+    if (responseData && responseData.dados && Array.isArray(responseData.dados)) {
+      
+      // Buscar detalhes de todos os agendamentos
+      for (const profissional of responseData.dados) {
+        if (profissional.reservas && Array.isArray(profissional.reservas)) {
+          
+          // Para cada agendamento, buscar os detalhes
+          for (const agendamento of profissional.reservas) {
+            
+            try {
+              // Buscar detalhes do agendamento
+              const detalhesResponse = await axios.post(
+                `${API_BASE_URL}/admin/agenda/viewAgendaInfo`,
+                `id=${agendamento.id}`,
+                {
+                  headers: {
+                    accept: "*/*",
+                    "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    dnt: "1",
+                    origin: API_BASE_URL,
+                    priority: "u=1, i",
+                    referer: `${API_BASE_URL}/admin/agenda`,
+                    "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"macOS"',
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-origin",
+                    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                    "x-requested-with": "XMLHttpRequest",
+                    cookie: cookies,
+                  },
+                  timeout: API_TIMEOUT,
+                }
+              );
+
+              // Extrair dados do cliente do HTML retornado
+              const htmlResponse = detalhesResponse.data;
+              const clienteMatch = htmlResponse.match(/Reserva\.dados\.cliente\s*=\s*({[^}]+});/);
+              let clienteData = null;
+              
+              if (clienteMatch) {
+                try {
+                  clienteData = JSON.parse(clienteMatch[1]);
+                } catch (e) {
+                  console.warn("Erro ao fazer parse dos dados do cliente:", e);
+                }
+              }
+
+              // Converter minutos para horário HH:MM
+              const minutosParaHorario = (minutos: number): string => {
+                const horas = Math.floor(minutos / 60);
+                const mins = minutos % 60;
+                return `${horas.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+              };
+
+              // Calcular tempo de duração
+              const tempoMinutos = parseInt(agendamento.hora_fim) - parseInt(agendamento.hora_inicio);
+              const tempoHoras = Math.floor(tempoMinutos / 60);
+              const tempoRestante = tempoMinutos % 60;
+              const tempoDuracao = tempoHoras > 0 
+                ? `${tempoHoras}h${tempoRestante > 0 ? ` ${tempoRestante}min` : ''}`
+                : `${tempoRestante}min`;
+
+              // Formatar agendamento com informações limpas para produção
+              const statusInfo = formatAgendamentoComStatus(agendamento).statusInfo;
+               
+              agendamentos.push({
+                id: agendamento.id,
+                data: agendamento.data,
+                horaInicio: minutosParaHorario(parseInt(agendamento.hora_inicio)),
+                horaFim: minutosParaHorario(parseInt(agendamento.hora_fim)),
+                duracao: tempoDuracao,
+                nomeCliente: clienteData?.nome || agendamento.cliente_nome,
+                telefoneCliente: clienteData?.celular || agendamento.cliente_tel,
+                servico: agendamento.servico,
+                profissional: agendamento.profissional,
+                status: statusInfo.nome,
+                observacoes: agendamento.obs || "",
+                valor: null
+              });
+
+              console.log(`Detalhes obtidos para agendamento ${agendamento.id.substring(0, 20)}...`);
+
+            } catch (error) {
+              console.warn(`Erro ao buscar detalhes do agendamento ${agendamento.id.substring(0, 20)}...:`, error);
+              
+              // Se der erro, manter pelo menos as informações básicas
+              const statusInfo = formatAgendamentoComStatus(agendamento).statusInfo;
+              const tempoMinutos = parseInt(agendamento.hora_fim) - parseInt(agendamento.hora_inicio);
+              const tempoHoras = Math.floor(tempoMinutos / 60);
+              const tempoRestante = tempoMinutos % 60;
+              const tempoDuracao = tempoHoras > 0 
+                ? `${tempoHoras}h${tempoRestante > 0 ? ` ${tempoRestante}min` : ''}`
+                : `${tempoRestante}min`;
+
+              agendamentos.push({
+                id: agendamento.id,
+                data: agendamento.data,
+                horaInicio: `${Math.floor(parseInt(agendamento.hora_inicio) / 60).toString().padStart(2, '0')}:${(parseInt(agendamento.hora_inicio) % 60).toString().padStart(2, '0')}`,
+                horaFim: `${Math.floor(parseInt(agendamento.hora_fim) / 60).toString().padStart(2, '0')}:${(parseInt(agendamento.hora_fim) % 60).toString().padStart(2, '0')}`,
+                duracao: tempoDuracao,
+                nomeCliente: agendamento.cliente_nome,
+                telefoneCliente: agendamento.cliente_tel,
+                servico: agendamento.servico,
+                profissional: agendamento.profissional,
+                status: statusInfo.nome,
+                observacoes: agendamento.obs || "",
+                valor: null
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Ordenar agendamentos por horário
+    agendamentos.sort((a, b) => {
+      const horaA = a.horaInicio.replace(':', '');
+      const horaB = b.horaInicio.replace(':', '');
+      return parseInt(horaA) - parseInt(horaB);
+    });
+
+    res.json({
+      sucesso: true,
+      total: agendamentos.length,
+      data: data || null,
+      agendamentos
+    });
   } catch (error) {
     console.error("Erro ao buscar agendamentos:", error);
     if (axios.isAxiosError(error)) {
@@ -119,10 +265,10 @@ export const getSchedules = async (req: Request, res: Response) => {
   }
 };
 
-// Função para buscar períodos de disponibilidade
-export const getAvailabilityPeriods = async (req: Request, res: Response) => {
+// Função para buscar detalhes de um agendamento (viewAgendaInfo)
+export const getScheduleDetails = async (req: Request, res: Response) => {
   try {
-    console.log("[getAvailabilityPeriods] Recebendo requisição:", {
+    console.log("[getScheduleDetails] Recebendo requisição:", {
       method: req.method,
       path: req.path,
       body: req.body,
@@ -132,353 +278,13 @@ export const getAvailabilityPeriods = async (req: Request, res: Response) => {
     });
 
     const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
       return;
     }
 
-    // Obter parâmetros do corpo da requisição
-    const {
-      Client_Id,
-      ItemClassifier_Id,
-      SelectedSessions,
-      InitDate,
-      EndDate,
-      InitTime,
-      EndTime,
-      AllowDocking,
-      Locality_Id,
-      OrganizationStructureSelected_Id,
-      NumberOfNearbyEstablishments,
-      Rescheduler_Id,
-    } = req.body;
-
-    // Validar parâmetros obrigatórios
-    if (!Client_Id || !ItemClassifier_Id || !InitDate || !EndDate) {
-      res.status(400).json({
-        error: "Parâmetros obrigatórios não fornecidos",
-        required: ["Client_Id", "ItemClassifier_Id", "InitDate", "EndDate"],
-      });
-      return;
-    }
-
-    // Criar a string de cookies
-    const cookies = createCookieString(authToken, structureId);
-
-    // Criar os dados do formulário
-    const formData = new URLSearchParams();
-
-    // Adicionar cada parâmetro, verificando se não é undefined
-    if (Client_Id) formData.append("Client_Id", Client_Id.toString());
-    if (ItemClassifier_Id)
-      formData.append("ItemClassifier_Id", ItemClassifier_Id.toString());
-    if (SelectedSessions)
-      formData.append("SelectedSessions", SelectedSessions.toString());
-    if (InitDate) formData.append("InitDate", InitDate);
-    if (EndDate) formData.append("EndDate", EndDate);
-    if (InitTime) formData.append("InitTime", InitTime);
-    if (EndTime) formData.append("EndTime", EndTime);
-    if (AllowDocking !== undefined)
-      formData.append("AllowDocking", AllowDocking.toString());
-    if (Locality_Id) formData.append("Locality_Id", Locality_Id.toString());
-    if (OrganizationStructureSelected_Id)
-      formData.append(
-        "OrganizationStructureSelected_Id",
-        OrganizationStructureSelected_Id.toString()
-      );
-    if (NumberOfNearbyEstablishments)
-      formData.append(
-        "NumberOfNearbyEstablishments",
-        NumberOfNearbyEstablishments.toString()
-      );
-    if (Rescheduler_Id)
-      formData.append("Rescheduler_Id", Rescheduler_Id.toString());
-
-    console.log("Enviando requisição de períodos de disponibilidade:", {
-      url: `${ELOS_URL}/Scheduler/AvailabilityPeriods`,
-      dados: req.body,
-    });
-
-    const response = await axios.post(
-      `${ELOS_URL}/Scheduler/AvailabilityPeriods`,
-      formData,
-      {
-        headers: {
-          accept: "*/*",
-          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-          "cache-control": "no-cache",
-          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-          dnt: "1",
-          origin: ELOS_URL,
-          pragma: "no-cache",
-          priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"macOS"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-          "x-requested-with": "XMLHttpRequest",
-          cookie: cookies,
-        },
-      }
-    );
-
-    console.log("Resposta de períodos de disponibilidade recebida");
-
-    res.json(response.data);
-  } catch (error) {
-    console.error("Erro ao buscar períodos de disponibilidade:", error);
-    if (axios.isAxiosError(error)) {
-      console.error("Detalhes do erro:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        headers: error.response?.headers,
-      });
-    }
-    res
-      .status(500)
-      .json({ error: "Erro ao buscar períodos de disponibilidade" });
-  }
-};
-
-// Função para submeter disponibilidade (agendar)
-export const submitAvailability = async (req: Request, res: Response) => {
-  try {
-    console.log("[submitAvailability] Recebendo requisição:", {
-      method: req.method,
-      path: req.path,
-      body: req.body,
-      headers: req.headers.authorization
-        ? "Com Authorization"
-        : "Sem Authorization",
-    });
-
-    const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
-
-    if (!authToken) {
-      res.status(401).json({ error: "Token não fornecido" });
-      return;
-    }
-
-    // Extrair os parâmetros do corpo da requisição
-    const { model, selected } = req.body;
-
-    // Validar parâmetros obrigatórios
-    if (!model || !selected) {
-      res.status(400).json({
-        error: "Parâmetros não fornecidos",
-        required: ["model", "selected"],
-      });
-      return;
-    }
-
-    // Criar a string de cookies
-    const cookies = createCookieString(authToken, structureId);
-
-    // Formatar os dados exatamente conforme esperado pela API
-    const formData = new URLSearchParams();
-
-    // Adicionar os parâmetros do modelo conforme o formato esperado
-    formData.append("model[Client_Id]", model.Client_Id.toString());
-    formData.append(
-      "model[ItemClassifier_Id]",
-      model.ItemClassifier_Id.toString()
-    );
-    formData.append("model[SelectedSessions]", model.SelectedSessions || "");
-    if (model.Rescheduler_Id)
-      formData.append("model[Rescheduler_Id]", model.Rescheduler_Id.toString());
-    if (model.ChangeAllEventLink !== undefined)
-      formData.append(
-        "model[ChangeAllEventLink]",
-        model.ChangeAllEventLink ? "True" : "False"
-      );
-    if (model.IgnoreParallelValidation !== undefined)
-      formData.append(
-        "model[IgnoreParallelValidation]",
-        model.IgnoreParallelValidation ? "true" : "false"
-      );
-
-    // Adicionar os parâmetros selecionados
-    formData.append("selected[InitDate]", selected.InitDate);
-    formData.append("selected[EndDate]", selected.EndDate);
-    formData.append("selected[Locality_Id]", selected.Locality_Id.toString());
-    formData.append(
-      "selected[OwnerOrgStruct_Id]",
-      selected.OwnerOrgStruct_Id.toString()
-    );
-
-    console.log("Enviando requisição de agendamento:", {
-      url: `${ELOS_URL}/Scheduler/SubmitAvailability`,
-      dados: { model, selected },
-    });
-
-    const response = await axios.post(
-      `${ELOS_URL}/Scheduler/SubmitAvailability`,
-      formData,
-      {
-        headers: {
-          accept: "*/*",
-          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-          "cache-control": "no-cache",
-          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-          dnt: "1",
-          origin: ELOS_URL,
-          pragma: "no-cache",
-          priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"macOS"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-          "x-requested-with": "XMLHttpRequest",
-          cookie: cookies,
-        },
-      }
-    );
-
-    console.log("Resposta de agendamento recebida:", response.data);
-
-    res.json(response.data);
-  } catch (error) {
-    console.error("Erro ao submeter disponibilidade:", error);
-    if (axios.isAxiosError(error)) {
-      console.error("Detalhes do erro:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        headers: error.response?.headers,
-      });
-    }
-    res.status(500).json({ error: "Erro ao submeter disponibilidade" });
-  }
-};
-
-// Função para atualizar status de um agendamento
-export const updateStatus = async (req: Request, res: Response) => {
-  try {
-    console.log("[updateStatus] Recebendo requisição:", {
-      method: req.method,
-      path: req.path,
-      body: req.body,
-      headers: req.headers.authorization
-        ? "Com Authorization"
-        : "Sem Authorization",
-    });
-
-    const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId =
-      (req.headers["x-organization-structure"] as string) || "58";
-
-    if (!authToken) {
-      res.status(401).json({ error: "Token não fornecido" });
-      return;
-    }
-
-    // Obter parâmetros do corpo da requisição
-    const { id, status, ignoreReleaseValidation, observations } = req.body;
-
-    // Validar parâmetros obrigatórios
-    if (!id || status === undefined) {
-      res.status(400).json({
-        error: "Parâmetros não fornecidos",
-        required: ["id", "status"],
-      });
-      return;
-    }
-
-    // Criar a string de cookies
-    const cookies = createCookieString(authToken, structureId);
-
-    // Criar os dados do formulário
-    const formData = new URLSearchParams({
-      id: id.toString(),
-      status: status.toString(),
-      ignoreReleaseValidation: ignoreReleaseValidation ? "true" : "false",
-      observations: observations || "",
-    }).toString();
-
-    console.log("Enviando requisição de atualização de status:", {
-      url: `${ELOS_URL}/Scheduler/UpdateStatus`,
-      dados: { id, status, ignoreReleaseValidation, observations },
-    });
-
-    const response = await axios.post(
-      `${ELOS_URL}/Scheduler/UpdateStatus`,
-      formData,
-      {
-        headers: {
-          accept: "*/*",
-          "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-          "cache-control": "no-cache",
-          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-          dnt: "1",
-          origin: ELOS_URL,
-          pragma: "no-cache",
-          priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": '"macOS"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-          "x-requested-with": "XMLHttpRequest",
-          cookie: cookies,
-        },
-      }
-    );
-
-    console.log("Resposta de atualização de status recebida:", response.data);
-
-    res.json(response.data);
-  } catch (error) {
-    console.error("Erro ao atualizar status:", error);
-    if (axios.isAxiosError(error)) {
-      console.error("Detalhes do erro:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        headers: error.response?.headers,
-      });
-    }
-    res.status(500).json({ error: "Erro ao atualizar status" });
-  }
-};
-
-// Função para buscar detalhes de um agendamento por ID
-export const getScheduleById = async (req: Request, res: Response) => {
-  try {
-    console.log("[getScheduleById] Recebendo requisição:", {
-      method: req.method,
-      path: req.path,
-      params: req.params,
-      headers: req.headers.authorization
-        ? "Com Authorization"
-        : "Sem Authorization",
-    });
-
-    const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId = (req.headers["x-organization-structure"] as string) || "58";
-
-    if (!authToken) {
-      res.status(401).json({ error: "Token não fornecido" });
-      return;
-    }
-
-    const { id } = req.params;
+    const { id } = req.body;
 
     if (!id) {
       res.status(400).json({
@@ -489,113 +295,65 @@ export const getScheduleById = async (req: Request, res: Response) => {
     }
 
     // Criar a string de cookies
-    const cookies = createCookieString(authToken, structureId);
+    const cookies = createCookieString(authToken);
 
     console.log("Enviando requisição de detalhes do agendamento:", {
-      url: `${ELOS_URL}/Scheduler/Form/${id}`,
-      dados: { id },
+      url: `${API_BASE_URL}/admin/agenda/viewAgendaInfo`,
+      id: id.substring(0, 50) + "...",
+      cookies,
     });
 
     const response = await axios.post(
-      `${ELOS_URL}/Scheduler/Form/${id}`,
-      null,
+      `${API_BASE_URL}/admin/agenda/viewAgendaInfo`,
+      `id=${id}`,
       {
         headers: {
-          accept: "text/html, */*; q=0.01",
+          accept: "*/*",
           "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-          "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
-          pragma: "no-cache",
+          origin: API_BASE_URL,
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
+          referer: `${API_BASE_URL}/admin/agenda`,
+          "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
-    // Extrair informações relevantes do HTML usando regex
-    const data = response.data;
+    console.log("Resposta de detalhes do agendamento recebida");
+
+    // A resposta vem como HTML com JavaScript, vamos extrair os dados do cliente
+    const htmlResponse = response.data;
     
-    // Extrair ID do agendamento
-    const idMatch = data.match(/value="(\d+)"\s*\/>\s*<input\s+id="SerializedOldValue"/);
-    const schedulerId = idMatch ? idMatch[1] : null;
+    // Extrair dados do JavaScript Reserva.dados.cliente
+    const clienteMatch = htmlResponse.match(/Reserva\.dados\.cliente\s*=\s*({[^}]+});/);
+    let clienteData = null;
+    
+    if (clienteMatch) {
+      try {
+        clienteData = JSON.parse(clienteMatch[1]);
+      } catch (e) {
+        console.warn("Erro ao fazer parse dos dados do cliente:", e);
+      }
+    }
 
-    // Extrair ID do cliente
-    const clientIdMatch = data.match(/value="(\d+)"\s*\/>\s*<input\s+data-val="true"/);
-    const clientId = clientIdMatch ? clientIdMatch[1] : null;
-
-    // Extrair nome do cliente
-    const clientNameMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="Client_Id"/);
-    const clientName = clientNameMatch ? clientNameMatch[1] : null;
-
-    // Extrair nome do procedimento
-    const procedureMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="Item_Name"/);
-    const procedure = procedureMatch ? procedureMatch[1] : null;
-
-    // Extrair origem
-    const originMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="Origin_Description"/);
-    const origin = originMatch ? originMatch[1] : null;
-
-    // Extrair status
-    const statusMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="Status"/);
-    const status = statusMatch ? statusMatch[1] : null;
-
-    // Extrair data inicial
-    const initDateMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="InitDate"/);
-    const initDate = initDateMatch ? initDateMatch[1] : null;
-
-    // Extrair data final
-    const endDateMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="EndDate"/);
-    const endDate = endDateMatch ? endDateMatch[1] : null;
-
-    // Extrair usuário de criação
-    const createUserMatch = data.match(/value="([^"]+)"\s*\/><\/div>/);
-    const createUser = createUserMatch ? createUserMatch[1] : null;
-
-    // Extrair estabelecimento
-    const establishmentMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="OwnerOrgStruct_Description"/);
-    const establishment = establishmentMatch ? establishmentMatch[1] : null;
-
-    // Extrair localidade
-    const localityMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="Locality_Name"/);
-    const locality = localityMatch ? localityMatch[1] : null;
-
-    // Extrair status da pesquisa de satisfação
-    const surveyMatch = data.match(/value="([^"]+)"\s*\/><span\s+class="help-block field-validation-valid"\s+data-valmsg-for="PendingSurvey"/);
-    const pendingSurvey = surveyMatch ? surveyMatch[1] : null;
-
-    const appointmentDetails = {
-      id: schedulerId,
-      clientId,
-      clientName,
-      procedure,
-      origin,
-      status,
-      initDate,
-      endDate,
-      createUser,
-      establishment,
-      locality,
-      pendingSurvey,
-    };
-
-    console.log("Detalhes do agendamento extraídos com sucesso");
-
+    // Retornar tanto o HTML original quanto os dados extraídos
     res.json({
       success: true,
-      data: appointmentDetails,
+      htmlResponse,
+      clienteData,
+      message: "Detalhes do agendamento obtidos com sucesso"
     });
+
   } catch (error) {
     console.error("Erro ao buscar detalhes do agendamento:", error);
     if (axios.isAxiosError(error)) {
@@ -609,140 +367,21 @@ export const getScheduleById = async (req: Request, res: Response) => {
   }
 };
 
-// Função para buscar agendamentos dos próximos 6 meses
-export const getUpcomingSchedules = async (req: Request, res: Response) => {
+// Função para obter todos os status disponíveis
+export const getAvailableStatus = async (req: Request, res: Response) => {
   try {
-    console.log("[getUpcomingSchedules] Recebendo requisição:", {
-      method: req.method,
-      path: req.path,
-      headers: req.headers.authorization
-        ? "Com Authorization"
-        : "Sem Authorization",
-    });
+    console.log("[getAvailableStatus] Recebendo requisição de status disponíveis");
 
-    const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId = (req.headers["x-organization-structure"] as string) || "58";
-
-    if (!authToken) {
-      res.status(401).json({ error: "Token não fornecido" });
-      return;
-    }
-
-    // Calcular datas de início (hoje) e fim (6 meses à frente)
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 6);
-    endDate.setHours(23, 59, 59, 999);
-
-    // Criar a string de cookies
-    const cookies = createCookieString(authToken, structureId);
-
-    // Criar os dados do formulário
-    const formData = new URLSearchParams({
-      sort: "",
-      page: "1",
-      pageSize: "1000", // Aumentar o tamanho da página para pegar mais registros
-      group: "",
-      filter: "",
-      establishment: "",
-      locality: "",
-      start: startDate.toISOString(),
-      end: endDate.toISOString(),
-    }).toString();
-
-    console.log("Enviando requisição de agendamentos:", {
-      url: `${ELOS_URL}/Scheduler/Read`,
-      dados: { startDate: startDate.toISOString(), endDate: endDate.toISOString(), structureId },
-    });
-
-    const response = await axios.post(`${ELOS_URL}/Scheduler/Read`, formData, {
-      headers: {
-        accept: "*/*",
-        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "cache-control": "no-cache",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        dnt: "1",
-        origin: ELOS_URL,
-        pragma: "no-cache",
-        priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
-        "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"macOS"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-        "x-requested-with": "XMLHttpRequest",
-        cookie: cookies,
-      },
-      validateStatus: function (status) {
-        return status >= 200 && status < 500; // Aceita códigos 2xx, 3xx e 4xx para processar erros manualmente
-      },
-    });
-
-    // Verificar se houve erro de autenticação
-    if (response.status === 401 || response.status === 403) {
-      console.error("Erro de autenticação na API Elos:", {
-        status: response.status,
-        data: response.data
-      });
-      res.status(401).json({ error: "Token inválido ou expirado" });
-      return;
-    }
-
-    // Verificar se a resposta é um HTML (provavelmente página de login)
-    if (typeof response.data === 'string' && 
-        (response.data.includes('<html') || 
-         response.data.includes('<!DOCTYPE html'))) {
-      console.error("Recebida página HTML em vez de JSON - possível erro de autenticação:", {
-        status: response.status,
-        data: response.data.substring(0, 200) + '...' // Exibir apenas os primeiros 200 caracteres
-      });
-      res.status(401).json({ error: "Token inválido ou expirado" });
-      return;
-    }
-
-    // Verificar se a resposta contém dados válidos em formato JSON
-    if (!response.data || typeof response.data !== 'object') {
-      console.error("Resposta inválida da API Elos:", {
-        status: response.status,
-        data: response.data
-      });
-      res.status(500).json({ error: "Erro ao processar resposta da API" });
-      return;
-    }
-
-    console.log("Resposta de agendamentos recebida");
+    const statusList = getAllStatus();
 
     res.json({
       success: true,
-      period: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString()
-      },
-      data: response.data
+      data: statusList,
+      message: "Status disponíveis obtidos com sucesso"
     });
+
   } catch (error) {
-    console.error("Erro ao buscar agendamentos:", error);
-    if (axios.isAxiosError(error)) {
-      console.error("Detalhes do erro:", {
-        status: error.response?.status,
-        data: error.response?.data,
-        headers: error.response?.headers,
-      });
-      
-      // Verificar se é um erro de autenticação
-      if (error.response?.status === 401 || error.response?.status === 403 ||
-          (error.response?.data && typeof error.response.data === 'string' && 
-           (error.response.data.includes('<html') || 
-            error.response.data.includes('<!DOCTYPE html')))) {
-        res.status(401).json({ error: "Token inválido ou expirado" });
-        return;
-      }
-    }
-    res.status(500).json({ error: "Erro ao buscar agendamentos" });
+    console.error("Erro ao buscar status disponíveis:", error);
+    res.status(500).json({ error: "Erro ao buscar status disponíveis" });
   }
 };

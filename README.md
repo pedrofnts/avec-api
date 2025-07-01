@@ -1,10 +1,10 @@
-# API Grove
+# Beauty Admin API
 
-API para gerenciamento de agendamentos do sistema Grove.
+API para gerenciamento de agendamentos e administração de salões de beleza.
 
 ## Descrição
 
-Esta API fornece endpoints para gerenciar agendamentos, clientes, procedimentos e estruturas organizacionais do sistema Grove.
+Esta API fornece endpoints para gerenciar agendamentos, clientes, procedimentos e estruturas organizacionais de salões de beleza e clínicas estéticas.
 
 ## Instalação
 
@@ -29,7 +29,7 @@ npm run start
 ## Estrutura do Projeto
 
 ```
-api-grove/
+beauty-admin-api/
 ├── src/
 │   ├── controllers/      # Controladores da API
 │   ├── routes/           # Rotas da API
@@ -65,4 +65,12 @@ api-grove/
 ### Estruturas Organizacionais
 
 - `POST /api/organizational-structures`: Listar estruturas organizacionais
-- `POST /api/organizational-structures/set-current`: Definir estrutura atual 
+- `POST /api/organizational-structures/set-current`: Definir estrutura atual
+
+## Configuração
+
+A API pode ser configurada através de variáveis de ambiente:
+
+- `PORT`: Porta do servidor (padrão: 3000)
+- `API_BASE_URL`: URL base da API externa
+- `API_TIMEOUT`: Timeout das requisições em ms (padrão: 30000) 

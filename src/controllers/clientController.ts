@@ -1,17 +1,15 @@
 import { Request, Response } from "express";
 import axios from "axios";
 
-const ELOS_URL = "https://botoclinic.elosclub.com.br";
+// Configurações que podem ser definidas via variáveis de ambiente
+const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
+const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 
-// Função auxiliar para criar string de cookies
+// Função auxiliar para criar string de cookies genérica
 const createCookieString = (authToken: string) => {
   return [
-    `tz=America%2FMaceio`,
-    `slot-routing-url=-`,
-    `current-organizational-structure=58`,
-    `_ga=GA1.1.1853101631.1733855667`,
-    `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-    `Authentication=${authToken}`,
+    `session=${authToken}`,
+    `tz=America%2FSao_Paulo`,
   ].join("; ");
 };
 
@@ -95,14 +93,13 @@ export const searchClients = async (req: Request, res: Response) => {
     const timestamp = new Date().getTime();
 
     console.log("Enviando requisição de busca de clientes:", {
-      url: `${ELOS_URL}/Search/Get`,
-      cookies: "cookie-string", // Não logar cookies completos
+      url: `${API_BASE_URL}/search/clients`,
       searchTerm,
     });
 
-    const url = `${ELOS_URL}/Search/Get?searchTerm=${encodeURIComponent(
+    const url = `${API_BASE_URL}/search/clients?searchTerm=${encodeURIComponent(
       searchTerm
-    )}&pageSize=${pageSize}&pageNum=${pageNum}&searchName=Client&extraCondition=&_=${timestamp}`;
+    )}&pageSize=${pageSize}&pageNum=${pageNum}&extraCondition=&_=${timestamp}`;
 
     const response = await axios.get(url, {
       headers: {
@@ -110,21 +107,21 @@ export const searchClients = async (req: Request, res: Response) => {
         "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "cache-control": "no-cache",
         dnt: "1",
-        origin: ELOS_URL,
+        origin: API_BASE_URL,
         pragma: "no-cache",
         priority: "u=1, i",
-        referer: `${ELOS_URL}/`,
+        referer: `${API_BASE_URL}/`,
         "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"macOS"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "user-agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
         cookie: cookies,
       },
+      timeout: API_TIMEOUT,
     });
 
     console.log("Resposta de busca de clientes recebida:", response.data);
@@ -211,21 +208,20 @@ export const listFilteredClients = async (req: Request, res: Response) => {
       email: email.toString(),
     }).toString();
 
-    console.log("Enviando requisição de listagem filtrada de clientes:", {
-      url: `${ELOS_URL}/Client/ListFilteredClients`,
+    console.log("Enviando requisição de clientes filtrados:", {
+      url: `${API_BASE_URL}/clients/filtered`,
       dados: {
-        sort,
         page,
         pageSize,
-        document,
         name,
         phone,
         email,
+        document,
       },
     });
 
     const response = await axios.post(
-      `${ELOS_URL}/Client/ListFilteredClients`,
+      `${API_BASE_URL}/clients/filtered`,
       formData,
       {
         headers: {
@@ -234,28 +230,25 @@ export const listFilteredClients = async (req: Request, res: Response) => {
           "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
+          referer: `${API_BASE_URL}/`,
           "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
-    console.log(
-      "Resposta de listagem filtrada de clientes recebida:",
-      response.data
-    );
+    console.log("Resposta de clientes filtrados recebida");
 
     res.json(response.data);
   } catch (error) {
@@ -271,7 +264,7 @@ export const listFilteredClients = async (req: Request, res: Response) => {
   }
 };
 
-// Função para buscar aniversariantes do dia
+// Função para buscar aniversariantes por data
 export const getBirthdaysByDate = async (req: Request, res: Response) => {
   try {
     console.log("[getBirthdaysByDate] Recebendo requisição:", {
@@ -284,17 +277,14 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
     });
 
     const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId = (req.headers["x-organization-structure"] as string) || "58";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
       return;
     }
 
-    // Obter parâmetros do corpo da requisição
     const { date } = req.body;
 
-    // Validar parâmetros obrigatórios
     if (!date) {
       res.status(400).json({
         error: "Data não fornecida",
@@ -303,47 +293,17 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
       return;
     }
 
-    // Formatar a data para o formato brasileiro (DD/MM/YYYY)
-    const parsedDate = new Date(date);
-    const day = parsedDate.getDate().toString().padStart(2, "0");
-    const month = (parsedDate.getMonth() + 1).toString().padStart(2, "0");
-    const year = parsedDate.getFullYear();
-    const formattedDate = `${day}/${month}/${year}`;
+    // Criar a string de cookies
+    const cookies = createCookieString(authToken);
 
-    // Criar a string de cookies com o ID da organização fornecido
-    const cookies = [
-      `tz=America%2FMaceio`,
-      `slot-routing-url=-`,
-      `sidebar_closed=0`,
-      `current-organizational-structure=${structureId}`,
-      `_ga=GA1.1.1853101631.1733855667`,
-      `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-      `Authentication=${authToken}`,
-    ].join("; ");
-
-    console.log("Enviando requisição de aniversariantes do dia:", {
-      url: `${ELOS_URL}/Report/Custom/List`,
-      date: formattedDate,
-      structureId,
+    console.log("Enviando requisição de aniversariantes:", {
+      url: `${API_BASE_URL}/clients/birthdays`,
+      data: date,
     });
 
-    // Criar os dados do formulário para a requisição
-    const formData = new URLSearchParams({
-      sort: "",
-      group: "",
-      filter: "",
-      ReportId: "5",
-      ReportDetailPeriodId: "2",
-      "Filters[0].Field": "Field4268",
-      "Filters[0].Placeholder": "[[DATA]]",
-      "Filters[0].Type": "date",
-      "Filters[0].Value1": formattedDate,
-      "Filters[0].Value2": formattedDate,
-    }).toString();
-
     const response = await axios.post(
-      `${ELOS_URL}/Report/Custom/List`,
-      formData,
+      `${API_BASE_URL}/clients/birthdays`,
+      `date=${encodeURIComponent(date)}`,
       {
         headers: {
           accept: "*/*",
@@ -351,64 +311,41 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
           "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Chromium";v="135", "Not-A.Brand";v="8"',
+          referer: `${API_BASE_URL}/`,
+          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
-    // Logs para depuração
-    console.log("Resposta de aniversariantes recebida:", response.data);
+    console.log("Resposta de aniversariantes recebida");
 
-    // Processar a resposta para retornar apenas os dados necessários
-    if (response.data && response.data.Data) {
-      const aniversariantes = response.data.Data.map(
-        (item: BirthdayReportItem) => ({
-          nome: item.NOME,
-          dataAniversario: item.DATA_ANIVERSARIO,
-          email: item.EMAIL,
-          telefone: formatarTelefone(item.TELEFONE),
-          endereco: {
-            logradouro: item.ENDERECO,
-            bairro: item.BAIRRO,
-            numero: item.NUMERO,
-            complemento: item.COMPLEMENTO,
-            cep: item.CEP,
-            cidade: item.CIDADE,
-          },
-          cpfCnpj: item.cpfcnpj,
-          permissoes: {
-            telefone: item.IsPhoneAllowed === "True",
-            whatsapp: item.IsWhatsappAllowed === "True",
-            email: item.IsEmailAllowed === "True",
-          },
-          inativo: item.INATIVO === "True",
-        })
-      );
+    // Processar e formatar os dados se necessário
+    let processedData = response.data;
 
-      res.json({
-        success: true,
-        date: formattedDate,
-        structureId,
-        total: aniversariantes.length,
-        aniversariantes,
-      });
-      return;
+    if (Array.isArray(response.data)) {
+      processedData = response.data.map((item: BirthdayReportItem) => ({
+        ...item,
+        telefoneFormatado: formatarTelefone(item.TELEFONE),
+      }));
     }
 
-    res.json(response.data);
+    res.json({
+      success: true,
+      date,
+      data: processedData,
+    });
   } catch (error) {
     console.error("Erro ao buscar aniversariantes:", error);
     if (axios.isAxiosError(error)) {
@@ -422,59 +359,54 @@ export const getBirthdaysByDate = async (req: Request, res: Response) => {
   }
 };
 
-// Função para buscar todos os clientes de uma unidade
+// Função para buscar todos os clientes por unidade
 export const getAllClientsByUnit = async (req: Request, res: Response) => {
   try {
+    console.log("[getAllClientsByUnit] Recebendo requisição:", {
+      method: req.method,
+      path: req.path,
+      body: req.body,
+      headers: req.headers.authorization
+        ? "Com Authorization"
+        : "Sem Authorization",
+    });
+
     const authToken = req.headers.authorization?.split(" ")[1];
-    const structureId = (req.headers["x-organization-structure"] as string) || "58";
+    const structureId =
+      (req.headers["x-organization-structure"] as string) || "1";
 
     if (!authToken) {
       res.status(401).json({ error: "Token não fornecido" });
       return;
     }
 
-    // Período amplo para buscar todos os clientes
-    const initialDate = "12/05/2015";
-    const finalDate = "12/05/2025";
+    // Criar a string de cookies
+    const cookies = createCookieString(authToken);
 
-    // Montar cookies com o id da unidade - garantindo que não tenha espaço no valor
-    const cookies = [
-      `tz=America%2FMaceio`,
-      `slot-routing-url=-`,
-      `current-organizational-structure=${structureId.trim()}`,
-      `_ga=GA1.1.1853101631.1733855667`,
-      `_ga_H3Z1Q956EV=GS1.1.1738295739.7.0.1738295739.0.0.0`,
-      `Authentication=${authToken}`,
-    ].join("; ");
-
-    console.log("[getAllClientsByUnit] ID da estrutura:", structureId);
-    console.log("[getAllClientsByUnit] Cookie estrutura:", `current-organizational-structure=${structureId.trim()}`);
-
-    // Montar dados do formulário conforme o curl fornecido
+    // Usar paginação ampla para buscar todos os clientes
     const formData = new URLSearchParams({
       sort: "",
+      page: "1",
+      pageSize: "10000", // Valor alto para pegar todos os registros
       group: "",
       filter: "",
-      ReportId: "19",
-      ReportDetailPeriodId: "2",
-      "Filters[0].Field": "Genero",
-      "Filters[0].Type": "string",
-      "Filters[0].Value1": "",
-      "Filters[1].Field": "MIDIA",
-      "Filters[1].Type": "string",
-      "Filters[1].Value1": "",
-      "Filters[2].Field": "CreationDate",
-      "Filters[2].Type": "date",
-      "Filters[2].Value1": initialDate,
-      "Filters[2].Value2": finalDate,
+      document: "",
+      name: "",
+      phone: "",
+      initialDate: "",
+      finalDate: "",
+      media: "",
+      type: "",
+      email: "",
     }).toString();
 
-    // Logs para debug
-    console.log("[getAllClientsByUnit] Enviando requisição para:", `${ELOS_URL}/Report/Custom/List`);
-    console.log("[getAllClientsByUnit] FormData:", formData);
+    console.log("Enviando requisição de todos os clientes da unidade:", {
+      url: `${API_BASE_URL}/clients/by-unit`,
+      structureId,
+    });
 
     const response = await axios.post(
-      `${ELOS_URL}/Report/Custom/List`,
+      `${API_BASE_URL}/clients/by-unit`,
       formData,
       {
         headers: {
@@ -483,42 +415,36 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
           "cache-control": "no-cache",
           "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           dnt: "1",
-          origin: ELOS_URL,
+          origin: API_BASE_URL,
           pragma: "no-cache",
           priority: "u=1, i",
-          referer: `${ELOS_URL}/`,
-          "sec-ch-ua": '"Not.A/Brand";v="99", "Chromium";v="136"',
+          referer: `${API_BASE_URL}/`,
+          "sec-ch-ua": '"Not:A-Brand";v="24", "Chromium";v="134"',
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": '"macOS"',
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
-          "user-agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           cookie: cookies,
         },
+        timeout: API_TIMEOUT,
       }
     );
 
-    // Mapear resposta para retornar apenas os campos desejados
-    const mapped = (response.data?.Data || []).map((item: any) => ({
-      id: item.Id,
-      nome: item.Name,
-      telefone: formatarTelefone(item.Telefone),
-      email: item.Email,
-      dataCriacao: item.CreationDate,
-      ultimoAtendimento: item.DateLastContract,
-    }));
+    console.log("Resposta de todos os clientes da unidade recebida");
 
-    res.json({
-      success: true,
+    // Adicionar informações da estrutura na resposta
+    const responseData = {
+      ...response.data,
       structureId,
-      total: mapped.length,
-      clientes: mapped,
-    });
+      totalClients: response.data?.Data?.length || 0,
+    };
+
+    res.json(responseData);
   } catch (error) {
-    console.error("Erro ao buscar clientes da unidade:", error);
+    console.error("Erro ao buscar todos os clientes da unidade:", error);
     if (axios.isAxiosError(error)) {
       console.error("Detalhes do erro:", {
         status: error.response?.status,
@@ -526,6 +452,8 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
         headers: error.response?.headers,
       });
     }
-    res.status(500).json({ error: "Erro ao buscar clientes da unidade" });
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar todos os clientes da unidade" });
   }
 };
