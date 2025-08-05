@@ -2,8 +2,23 @@ import { Request, Response, NextFunction } from "express";
 import puppeteer from "puppeteer";
 
 // Configurações que podem ser definidas via variáveis de ambiente
-const LOGIN_URL = process.env.LOGIN_URL || "https://admin.avec.beauty/moringaescovaria/admin";
+const LOGIN_BASE_URL = process.env.LOGIN_BASE_URL || "https://admin.avec.beauty";
 const LOGIN_TIMEOUT = parseInt(process.env.LOGIN_TIMEOUT || "30000");
+
+// Mapeamento de unidades para URLs
+const UNIT_MAPPING: { [key: string]: string } = {
+  villa: "moringaescovaria",
+  aquarius: "tratbem-hair-cosmeticos-ltda"
+};
+
+// Função para construir URL de login baseada na unidade
+const buildLoginUrl = (unidade?: string): string => {
+  const defaultUnit = "moringaescovaria";
+  const unit = unidade && UNIT_MAPPING[unidade.toLowerCase()] 
+    ? UNIT_MAPPING[unidade.toLowerCase()] 
+    : defaultUnit;
+  return `${LOGIN_BASE_URL}/${unit}/admin`;
+};
 
 // Interface para a resposta de login
 interface LoginResponse {
@@ -27,15 +42,19 @@ export const login = async (
       body: {
         email: req.body.email ? "Fornecido" : "Não fornecido",
         password: req.body.password ? "Fornecido" : "Não fornecido",
+        unidade: req.body.unidade || "Não especificada (usando villa como padrão)",
       },
     });
 
-    const { email, password } = req.body;
+    const { email, password, unidade } = req.body;
 
     if (!email || !password) {
       res.status(400).json({ error: "Email e senha são obrigatórios" });
       return;
     }
+
+    // Construir URL de login baseada na unidade
+    const loginUrl = buildLoginUrl(unidade);
 
     console.log("[login] Iniciando navegador Puppeteer...");
 
@@ -60,10 +79,10 @@ export const login = async (
     await page.setDefaultTimeout(LOGIN_TIMEOUT);
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36');
 
-    console.log(`[login] Navegando para: ${LOGIN_URL}`);
+    console.log(`[login] Navegando para: ${loginUrl}`);
 
     // Navegar para a página de login
-    await page.goto(LOGIN_URL, { 
+    await page.goto(loginUrl, { 
       waitUntil: 'networkidle2',
       timeout: LOGIN_TIMEOUT 
     });
@@ -117,7 +136,7 @@ export const login = async (
     console.log(`[login] URL atual após login: ${currentUrl}`);
 
     // Se ainda estiver na página de login, provavelmente houve erro
-    if (currentUrl.includes('/login') || currentUrl === LOGIN_URL) {
+    if (currentUrl.includes('/login') || currentUrl === loginUrl) {
       // Verificar se há mensagem de erro na página
       const errorMessage = await page.evaluate(() => {
         const errorElements = document.querySelectorAll('[class*="error"], [class*="alert"], [class*="warning"]');
