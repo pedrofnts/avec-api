@@ -455,7 +455,7 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
   }
 };
 
-// Função para listar clientes simplificada
+// Função para listar todos os clientes
 export const listClients = async (req: Request, res: Response) => {
   try {
     const authToken = req.headers.authorization?.split(" ")[1];
@@ -477,17 +477,18 @@ export const listClients = async (req: Request, res: Response) => {
       timeout: API_TIMEOUT,
     });
 
-    // Extrair e simplificar dados
     const clientes = response.data.data?.map((row: any) => {
-      const nome = row[0]?.replace(/<[^>]*>/g, '').split('\n')[1]?.trim() || '';
+      // Extrair nome do HTML da tag <a> após a <img>
+      const htmlNome = row[0] || '';
+      const nomeMatch = htmlNome.match(/<img[^>]*\/>\s*([^<\n]+)/);
+      const nome = nomeMatch ? nomeMatch[1].trim() : '';
+      
       const contato = row[1] || '';
       const aniversario = row[2] || '';
       
-      // Extrair email
       const emailMatch = contato.match(/<b>E-mail: <\/b>([^<\s]+)/);
       const email = emailMatch ? emailMatch[1] : '';
       
-      // Extrair telefone
       const telefoneMatch = contato.match(/data-ddi="55" class="should-format-phone-number">(\d+)</);
       const telefone = telefoneMatch ? telefoneMatch[1] : '';
 
@@ -502,5 +503,74 @@ export const listClients = async (req: Request, res: Response) => {
     res.json(clientes);
   } catch (error) {
     res.status(500).json({ error: "Erro ao listar clientes" });
+  }
+};
+
+// Função para buscar aniversariantes por data
+export const getBirthdayClients = async (req: Request, res: Response) => {
+  try {
+    const authToken = req.headers.authorization?.split(" ")[1];
+    if (!authToken) {
+      res.status(401).json({ error: "Token não fornecido" });
+      return;
+    }
+
+    const { date } = req.query;
+    if (!date) {
+      res.status(400).json({ error: "Data obrigatória no formato yyyy-mm-dd" });
+      return;
+    }
+
+    // Converter yyyy-mm-dd para formato brasileiro dd de mês de yyyy
+    const [year, month, day] = (date as string).split('-');
+    const months = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const targetDate = `${parseInt(day)} de ${months[parseInt(month) - 1]}`;
+
+    const cookies = createCookieString(authToken);
+    const url = `${API_BASE_URL}/admin/clientes/lista?draw=1&start=0&length=10000&columns[0][data]=0&columns[0][name]=&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=1&columns[1][name]=&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=2&columns[2][name]=&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=3&columns[3][name]=&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=4&columns[4][name]=&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=5&columns[5][name]=&columns[5][searchable]=true&columns[5][orderable]=false&columns[5][search][value]=&columns[5][search][regex]=false&order[0][column]=0&order[0][dir]=asc&search[value]=&search[regex]=false&_=${Date.now()}`;
+
+    const response = await axios.get(url, {
+      headers: {
+        accept: "application/json, text/javascript, */*; q=0.01",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        cookie: cookies,
+        "x-requested-with": "XMLHttpRequest",
+      },
+      timeout: API_TIMEOUT,
+    });
+
+    // Filtrar aniversariantes do dia
+    const aniversariantes = response.data.data?.filter((row: any) => {
+      const aniversario = row[2] || '';
+      return aniversario.includes(targetDate);
+    }).map((row: any) => {
+      // Extrair nome do HTML da tag <a> após a <img>
+      const htmlNome = row[0] || '';
+      const nomeMatch = htmlNome.match(/<img[^>]*\/>\s*([^<\n]+)/);
+      const nome = nomeMatch ? nomeMatch[1].trim() : '';
+      
+      const contato = row[1] || '';
+      const aniversario = row[2] || '';
+      
+      const emailMatch = contato.match(/<b>E-mail: <\/b>([^<\s]+)/);
+      const email = emailMatch ? emailMatch[1] : '';
+      
+      const telefoneMatch = contato.match(/data-ddi="55" class="should-format-phone-number">(\d+)</);
+      const telefone = telefoneMatch ? telefoneMatch[1] : '';
+
+      return {
+        nome,
+        email,
+        telefone,
+        aniversario
+      };
+    }) || [];
+
+    res.json(aniversariantes);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao buscar aniversariantes" });
   }
 };
