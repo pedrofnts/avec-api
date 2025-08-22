@@ -15,4 +15,7 @@ router.post("/birthdays", clientController.getBirthdaysByDate);
 // Rota para buscar todos os clientes de uma unidade (GET na raiz)
 router.get("/", clientController.getAllClientsByUnit);
 
+// Rota para listar clientes simplificada
+router.get("/list", clientController.listClients);
+
 export default router;

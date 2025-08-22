@@ -5,12 +5,9 @@ import axios from "axios";
 const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
 const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 
-// Função auxiliar para criar string de cookies genérica
+// Função auxiliar para criar string de cookies para avec.beauty
 const createCookieString = (authToken: string) => {
-  return [
-    `session=${authToken}`,
-    `tz=America%2FSao_Paulo`,
-  ].join("; ");
+  return `ci3_session=${authToken}`;
 };
 
 // Função auxiliar para formatar telefone
@@ -455,5 +452,55 @@ export const getAllClientsByUnit = async (req: Request, res: Response) => {
     res
       .status(500)
       .json({ error: "Erro ao buscar todos os clientes da unidade" });
+  }
+};
+
+// Função para listar clientes simplificada
+export const listClients = async (req: Request, res: Response) => {
+  try {
+    const authToken = req.headers.authorization?.split(" ")[1];
+    if (!authToken) {
+      res.status(401).json({ error: "Token não fornecido" });
+      return;
+    }
+
+    const cookies = createCookieString(authToken);
+    const url = `${API_BASE_URL}/admin/clientes/lista?draw=1&start=0&length=10000&columns[0][data]=0&columns[0][name]=&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=1&columns[1][name]=&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=2&columns[2][name]=&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=3&columns[3][name]=&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=4&columns[4][name]=&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=5&columns[5][name]=&columns[5][searchable]=true&columns[5][orderable]=false&columns[5][search][value]=&columns[5][search][regex]=false&order[0][column]=0&order[0][dir]=asc&search[value]=&search[regex]=false&_=${Date.now()}`;
+
+    const response = await axios.get(url, {
+      headers: {
+        accept: "application/json, text/javascript, */*; q=0.01",
+        "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        cookie: cookies,
+        "x-requested-with": "XMLHttpRequest",
+      },
+      timeout: API_TIMEOUT,
+    });
+
+    // Extrair e simplificar dados
+    const clientes = response.data.data?.map((row: any) => {
+      const nome = row[0]?.replace(/<[^>]*>/g, '').split('\n')[1]?.trim() || '';
+      const contato = row[1] || '';
+      const aniversario = row[2] || '';
+      
+      // Extrair email
+      const emailMatch = contato.match(/<b>E-mail: <\/b>([^<\s]+)/);
+      const email = emailMatch ? emailMatch[1] : '';
+      
+      // Extrair telefone
+      const telefoneMatch = contato.match(/data-ddi="55" class="should-format-phone-number">(\d+)</);
+      const telefone = telefoneMatch ? telefoneMatch[1] : '';
+
+      return {
+        nome,
+        email,
+        telefone,
+        aniversario
+      };
+    }) || [];
+
+    res.json(clientes);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao listar clientes" });
   }
 };
