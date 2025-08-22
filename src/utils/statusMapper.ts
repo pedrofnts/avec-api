@@ -66,7 +66,15 @@ export const STATUS_AGENDAMENTO: Record<string, AgendamentoStatus> = {
 
 // Função para obter status por valor
 export const getStatusByValue = (valor: string): AgendamentoStatus | null => {
-  return STATUS_AGENDAMENTO[valor] || null;
+  // Primeiro tenta busca direta
+  if (STATUS_AGENDAMENTO[valor]) {
+    return STATUS_AGENDAMENTO[valor];
+  }
+  
+  // Se não encontrou, tenta normalizar o valor (remover ou adicionar .0)
+  const normalizedValor = valor.includes('.') ? valor.split('.')[0] : valor + '.0';
+  
+  return STATUS_AGENDAMENTO[normalizedValor] || null;
 };
 
 // Função para obter status por ID
@@ -81,7 +89,15 @@ export const getAllStatus = (): AgendamentoStatus[] => {
 
 // Função para verificar se um status é válido
 export const isValidStatus = (valor: string): boolean => {
-  return valor in STATUS_AGENDAMENTO;
+  // Primeiro verifica busca direta
+  if (valor in STATUS_AGENDAMENTO) {
+    return true;
+  }
+  
+  // Se não encontrou, tenta normalizar o valor (remover ou adicionar .0)
+  const normalizedValor = valor.includes('.') ? valor.split('.')[0] : valor + '.0';
+  
+  return normalizedValor in STATUS_AGENDAMENTO;
 };
 
 // Função para formatar um agendamento com informações de status

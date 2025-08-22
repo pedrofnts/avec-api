@@ -64,11 +64,27 @@ export const getSchedules = async (req: Request, res: Response) => {
     let contentType = "application/x-www-form-urlencoded; charset=UTF-8";
 
     // Verificar se é formato avec.beauty ou formato genérico
-    if (data && profissionalIdArr) {
-      // Formato avec.beauty - converter IDs para formato esperado
-      const formattedProfissionais = Array.isArray(profissionalIdArr) 
-        ? profissionalIdArr.map(id => ({ id: id.toString() }))
-        : [{ id: profissionalIdArr.toString() }];
+    if (data) {
+      // Formato avec.beauty - usar profissionais padrão se não informados
+      const defaultProfissionais = [
+        {"id":"616612"},
+        {"id":"702155"},
+        {"id":"646886"},
+        {"id":"782110"},
+        {"id":"780924"},
+        {"id":"780689"}
+      ];
+      
+      let formattedProfissionais;
+      if (profissionalIdArr) {
+        // Converter IDs fornecidos para formato esperado
+        formattedProfissionais = Array.isArray(profissionalIdArr) 
+          ? profissionalIdArr.map(id => ({ id: id.toString() }))
+          : [{ id: profissionalIdArr.toString() }];
+      } else {
+        // Usar profissionais padrão
+        formattedProfissionais = defaultProfissionais;
+      }
       
       requestData = `dados=${JSON.stringify({ data, profissionalIdArr: formattedProfissionais })}`;
     } else {
@@ -90,7 +106,7 @@ export const getSchedules = async (req: Request, res: Response) => {
 
     console.log("Enviando requisição de agendamentos:", {
       url: `${API_BASE_URL}${endpoint}`,
-      dados: data ? { data, profissionalIdArr: data && profissionalIdArr ? Array.isArray(profissionalIdArr) ? profissionalIdArr.map(id => ({ id: id.toString() })) : [{ id: profissionalIdArr.toString() }] : profissionalIdArr } : { start, end, structureId },
+      dados: data ? { data, profissionalIdArr: profissionalIdArr || "usando_padrão" } : { start, end, structureId },
       cookies,
       requestData: requestData.substring(0, 200) + (requestData.length > 200 ? '...' : '')
     });
