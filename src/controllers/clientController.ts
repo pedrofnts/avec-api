@@ -545,8 +545,10 @@ export const getBirthdayClients = async (req: Request, res: Response) => {
     // Filtrar aniversariantes do dia
     const aniversariantes = response.data.data?.filter((row: any) => {
       const aniversario = row[2] || '';
-      // Usar regex para match exato do dia e mês (evita matches parciais como "13 de Outubro" quando buscamos "3 de Outubro")
-      const regex = new RegExp(`\\b${parseInt(day)}\\s+de\\s+${months[parseInt(month) - 1]}\\b`, 'i');
+      // Match exato: dia + espaços + "de" + espaços + mês (usando word boundaries e escape do número)
+      const dayNum = parseInt(day);
+      const monthName = months[parseInt(month) - 1];
+      const regex = new RegExp(`(^|\\D)${dayNum}\\s+de\\s+${monthName}($|\\D)`, 'i');
       return regex.test(aniversario);
     }).map((row: any) => {
       // Extrair nome do HTML da tag <a> após a <img>
