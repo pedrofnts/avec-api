@@ -545,7 +545,9 @@ export const getBirthdayClients = async (req: Request, res: Response) => {
     // Filtrar aniversariantes do dia
     const aniversariantes = response.data.data?.filter((row: any) => {
       const aniversario = row[2] || '';
-      return aniversario.includes(targetDate);
+      // Usar regex para match exato do dia e mês (evita matches parciais como "13 de Outubro" quando buscamos "3 de Outubro")
+      const regex = new RegExp(`\\b${parseInt(day)}\\s+de\\s+${months[parseInt(month) - 1]}\\b`, 'i');
+      return regex.test(aniversario);
     }).map((row: any) => {
       // Extrair nome do HTML da tag <a> após a <img>
       const htmlNome = row[0] || '';
