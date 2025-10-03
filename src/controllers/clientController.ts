@@ -527,7 +527,6 @@ export const getBirthdayClients = async (req: Request, res: Response) => {
       'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
     ];
-    const targetDate = `${parseInt(day)} de ${months[parseInt(month) - 1]}`;
 
     const cookies = createCookieString(authToken);
     const url = `${API_BASE_URL}/admin/clientes/lista?draw=1&start=0&length=10000&columns[0][data]=0&columns[0][name]=&columns[0][searchable]=true&columns[0][orderable]=true&columns[0][search][value]=&columns[0][search][regex]=false&columns[1][data]=1&columns[1][name]=&columns[1][searchable]=true&columns[1][orderable]=true&columns[1][search][value]=&columns[1][search][regex]=false&columns[2][data]=2&columns[2][name]=&columns[2][searchable]=true&columns[2][orderable]=true&columns[2][search][value]=&columns[2][search][regex]=false&columns[3][data]=3&columns[3][name]=&columns[3][searchable]=true&columns[3][orderable]=true&columns[3][search][value]=&columns[3][search][regex]=false&columns[4][data]=4&columns[4][name]=&columns[4][searchable]=true&columns[4][orderable]=true&columns[4][search][value]=&columns[4][search][regex]=false&columns[5][data]=5&columns[5][name]=&columns[5][searchable]=true&columns[5][orderable]=false&columns[5][search][value]=&columns[5][search][regex]=false&order[0][column]=0&order[0][dir]=asc&search[value]=&search[regex]=false&_=${Date.now()}`;
@@ -545,11 +544,17 @@ export const getBirthdayClients = async (req: Request, res: Response) => {
     // Filtrar aniversariantes do dia
     const aniversariantes = response.data.data?.filter((row: any) => {
       const aniversario = row[2] || '';
-      // Match exato: dia + espaços + "de" + espaços + mês (usando word boundaries e escape do número)
-      const dayNum = parseInt(day);
       const monthName = months[parseInt(month) - 1];
-      const regex = new RegExp(`(^|\\D)${dayNum}\\s+de\\s+${monthName}($|\\D)`, 'i');
-      return regex.test(aniversario);
+
+      // Testar ambos os formatos: com e sem zero à esquerda
+      // Ex: "03 de Outubro" e "3 de Outubro"
+      const dayWithZero = day.padStart(2, '0');
+      const dayWithoutZero = parseInt(day).toString();
+
+      const regexWithZero = new RegExp(`\\b${dayWithZero}\\s+de\\s+${monthName}\\b`, 'i');
+      const regexWithoutZero = new RegExp(`\\b${dayWithoutZero}\\s+de\\s+${monthName}\\b`, 'i');
+
+      return regexWithZero.test(aniversario) || regexWithoutZero.test(aniversario);
     }).map((row: any) => {
       // Extrair nome do HTML da tag <a> após a <img>
       const htmlNome = row[0] || '';
