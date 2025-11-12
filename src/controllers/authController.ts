@@ -8,7 +8,8 @@ const LOGIN_TIMEOUT = parseInt(process.env.LOGIN_TIMEOUT || "30000");
 // Mapeamento de unidades para URLs
 const UNIT_MAPPING: { [key: string]: string } = {
   villa: "moringaescovaria",
-  aquarius: "tratbem-hair-cosmeticos-ltda"
+  aquarius: "tratbem-hair-cosmeticos-ltda",
+  uberaba: "knhairexpert"
 };
 
 // Função para construir URL de login baseada na unidade
@@ -187,16 +188,3 @@ export const login = async (
   }
 };
 
-// Função para testar o login (endpoint de teste)
-export const testLogin = async (req: Request, res: Response): Promise<void> => {
-  const testCredentials = {
-    email: "biomaamorsjc@gmail.com",
-    password: "Biomaamorsjc@2025"
-  };
-
-  console.log("[testLogin] Iniciando teste de login com credenciais padrão");
-
-  // Redirecionar para a função de login principal
-  req.body = testCredentials;
-  await login(req, res, () => {});
-};

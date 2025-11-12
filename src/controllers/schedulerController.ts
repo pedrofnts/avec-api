@@ -6,6 +6,33 @@ import { formatAgendamentoComStatus, getAllStatus } from "../utils/statusMapper"
 const API_BASE_URL = process.env.API_BASE_URL || "https://admin.avec.beauty";
 const API_TIMEOUT = parseInt(process.env.API_TIMEOUT || "30000");
 
+// Mapeamento de IDs de profissionais por unidade
+const PROFESSIONAL_IDS_BY_UNIT: { [key: string]: Array<{ id: string }> } = {
+  villa: [
+    {"id":"616612"},
+    {"id":"702155"},
+    {"id":"646886"},
+    {"id":"782110"},
+    {"id":"780924"},
+    {"id":"780689"}
+  ],
+  aquarius: [
+    {"id":"616612"},
+    {"id":"702155"},
+    {"id":"646886"},
+    {"id":"782110"},
+    {"id":"780924"},
+    {"id":"780689"}
+  ],
+  uberaba: [
+    {"id":"187141"},
+    {"id":"187189"},
+    {"id":"1031004"},
+    {"id":"187581"},
+    {"id":"945103"}
+  ]
+};
+
 // Função auxiliar para criar string de cookies para avec.beauty
 const createCookieString = (authToken: string, structureId: string = "1") => {
   return `ci3_session=${authToken}`;
@@ -45,6 +72,7 @@ export const getSchedules = async (req: Request, res: Response) => {
       end,
       data,
       profissionalIdArr,
+      unidade = "villa", // Unidade padrão
     } = req.body;
 
     // Validar parâmetros obrigatórios
@@ -65,27 +93,20 @@ export const getSchedules = async (req: Request, res: Response) => {
 
     // Verificar se é formato avec.beauty ou formato genérico
     if (data) {
-      // Formato avec.beauty - usar profissionais padrão se não informados
-      const defaultProfissionais = [
-        {"id":"616612"},
-        {"id":"702155"},
-        {"id":"646886"},
-        {"id":"782110"},
-        {"id":"780924"},
-        {"id":"780689"}
-      ];
-      
+      // Formato avec.beauty - usar profissionais baseado na unidade
+      const defaultProfissionais = PROFESSIONAL_IDS_BY_UNIT[unidade.toLowerCase()] || PROFESSIONAL_IDS_BY_UNIT.villa;
+
       let formattedProfissionais;
       if (profissionalIdArr) {
         // Converter IDs fornecidos para formato esperado
-        formattedProfissionais = Array.isArray(profissionalIdArr) 
-          ? profissionalIdArr.map(id => ({ id: id.toString() }))
+        formattedProfissionais = Array.isArray(profissionalIdArr)
+          ? profissionalIdArr.map((id: any) => typeof id === 'object' && id.id ? id : { id: id.toString() })
           : [{ id: profissionalIdArr.toString() }];
       } else {
-        // Usar profissionais padrão
+        // Usar profissionais padrão da unidade
         formattedProfissionais = defaultProfissionais;
       }
-      
+
       requestData = `dados=${JSON.stringify({ data, profissionalIdArr: formattedProfissionais })}`;
     } else {
       // Formato genérico
