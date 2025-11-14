@@ -38,6 +38,23 @@ const createCookieString = (authToken: string, structureId: string = "1") => {
   return `ci3_session=${authToken}`;
 };
 
+// Função para converter data de DD/MM/YYYY para YYYY-MM-DD
+const convertDateFormat = (date: string): string => {
+  // Se já está no formato YYYY-MM-DD, retornar direto
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+
+  // Converter de DD/MM/YYYY para YYYY-MM-DD
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+    const [day, month, year] = date.split('/');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Se não corresponder a nenhum formato, retornar como está
+  return date;
+};
+
 // Função para buscar agendamentos
 export const getSchedules = async (req: Request, res: Response) => {
   try {
@@ -107,7 +124,10 @@ export const getSchedules = async (req: Request, res: Response) => {
         formattedProfissionais = defaultProfissionais;
       }
 
-      requestData = `dados=${JSON.stringify({ data, profissionalIdArr: formattedProfissionais })}`;
+      // Converter data para formato YYYY-MM-DD
+      const formattedData = convertDateFormat(data);
+
+      requestData = `dados=${JSON.stringify({ data: formattedData, profissionalIdArr: formattedProfissionais })}`;
     } else {
       // Formato genérico
       const formData = new URLSearchParams({
@@ -154,6 +174,7 @@ export const getSchedules = async (req: Request, res: Response) => {
     });
 
         console.log("Resposta de agendamentos recebida");
+    console.log("Estrutura da resposta:", JSON.stringify(response.data, null, 2).substring(0, 1000));
 
     // Formatar agendamentos em lista simples e buscar detalhes
     const responseData = response.data;
