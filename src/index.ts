@@ -5,6 +5,7 @@ import clientRoutes from "./routes/clientRoutes";
 import procedureRoutes from "./routes/procedureRoutes";
 import organizationalStructureRoutes from "./routes/organizationalStructureRoutes";
 import authRoutes from "./routes/authRoutes";
+import comandaRoutes from "./routes/comandaRoutes";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -25,6 +26,7 @@ app.use("/api/scheduler", schedulerRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/procedures", procedureRoutes);
 app.use("/api/organizational-structures", organizationalStructureRoutes);
+app.use("/api/comandas", comandaRoutes);
 
 // Rota de health check
 app.get("/health", (req, res) => {
